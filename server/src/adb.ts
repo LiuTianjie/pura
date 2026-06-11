@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -35,7 +38,7 @@ export type ControlAction =
   | "swipe_right"
   | "text";
 
-const ADB = process.env.ADB_PATH ?? "adb";
+const ADB = resolveAdbCommand();
 const INCLUDE_TCP_DEVICES = process.env.INCLUDE_TCP_DEVICES === "true";
 
 export function adbCommand(args: string[]) {
@@ -216,6 +219,20 @@ export async function getDisplaySize(serial: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function resolveAdbCommand() {
+  if (process.env.ADB_PATH) return process.env.ADB_PATH;
+
+  const sdkRoot = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  const candidates = [
+    sdkRoot ? path.join(sdkRoot, "platform-tools", "adb") : "",
+    path.join(os.homedir(), "Library", "Android", "sdk", "platform-tools", "adb"),
+    "/opt/homebrew/bin/adb",
+    "/usr/local/bin/adb"
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? "adb";
 }
 
 const keyEvents: Partial<Record<ControlAction, string>> = {

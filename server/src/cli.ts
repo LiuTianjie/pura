@@ -252,6 +252,17 @@ function printLaunchAgentStatus() {
 }
 
 function makeLaunchAgentPlist(nodePath: string, cliPath: string) {
+  const environment = {
+    PATH: process.env.PATH,
+    ANDROID_HOME: process.env.ANDROID_HOME,
+    ANDROID_SDK_ROOT: process.env.ANDROID_SDK_ROOT,
+    ADB_PATH: findExecutable("adb")
+  };
+  const environmentEntries = Object.entries(environment)
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([key, value]) => `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`)
+    .join("\n");
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -268,6 +279,10 @@ function makeLaunchAgentPlist(nodePath: string, cliPath: string) {
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+${environmentEntries}
+  </dict>
   <key>StandardOutPath</key>
   <string>${escapeXml(path.join(os.homedir(), "Library", "Logs", "pura-agent.log"))}</string>
   <key>StandardErrorPath</key>
@@ -307,6 +322,16 @@ function escapeXml(value: string) {
 function resolveAgentDataDir(value?: string) {
   if (!value) return path.join(os.homedir(), ".pura", "agent-data");
   return path.isAbsolute(value) ? value : path.resolve(value);
+}
+
+function findExecutable(name: string) {
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!directory) continue;
+    const candidate = path.join(directory, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return undefined;
 }
 
 function startServer(env: NodeJS.ProcessEnv) {
