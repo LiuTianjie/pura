@@ -335,6 +335,18 @@ function App() {
 
   const selectDevice = (device: AndroidDevice) => {
     setSelectedSerial(device.serial);
+    if (session && session.serial !== device.serial) {
+      setSession(null);
+    }
+  };
+
+  const selectDeviceFromRail = async (device: AndroidDevice) => {
+    selectDevice(device);
+    setLatestScreenshot(null);
+    setScreenshotCopied(false);
+    if (viewMode === "focus" && device.state === "device") {
+      await openDevice(device.serial);
+    }
   };
 
   const enterDevice = async (device: AndroidDevice) => {
@@ -421,7 +433,7 @@ function App() {
                 className={`deviceItem published ${device.serial === selectedSerial ? "selected" : ""}`}
                 key={device.serial}
               >
-                <button className="deviceSelectButton" type="button" onClick={() => selectDevice(device)}>
+                <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
                   <Smartphone size={19} />
                   <span className="deviceCopy">
                     <strong>{displayName(device)}</strong>
@@ -453,7 +465,7 @@ function App() {
                 className={`deviceItem ${device.serial === selectedSerial ? "selected" : ""}`}
                 key={device.serial}
               >
-                <button className="deviceSelectButton" type="button" onClick={() => selectDevice(device)}>
+                <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
                   <Smartphone size={18} />
                   <span className="deviceCopy">
                     <strong>{formatDeviceName(device)}</strong>
