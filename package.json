@@ -1,5 +1,5 @@
 {
-  "name": "pura-cli",
+  "name": "@nickname4th/pura-cli",
   "version": "0.1.0",
   "description": "LAN Android device mirroring hub and developer CLI for distributed teams.",
   "license": "MIT",

@@ -23,20 +23,20 @@ http://<hub-lan-ip>:8787
 On each developer machine, connect an Agent:
 
 ```bash
-npx pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"
+npx @nickname4th/pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"
 ```
 
 On macOS, keep the Agent connected after login or terminal close. Install the CLI globally first so the background service has a stable executable path, then connect with `--background`:
 
 ```bash
-npm install -g pura-cli
+npm install -g @nickname4th/pura-cli
 pura-cli connect <hub-lan-ip>:8787 --name "Zhang San" --background
 ```
 
 Publish the local Android device:
 
 ```bash
-npx pura-cli connect device --name "Zhang San Pixel 8" --owner "Zhang San" --note "login branch"
+npx @nickname4th/pura-cli connect device --name "Zhang San Pixel 8" --owner "Zhang San" --note "login branch"
 ```
 
 Designers can now pick the published machine on the Hub homepage, open the live screen, and click on it with a mouse.
@@ -65,13 +65,13 @@ https://liutianjie.github.io/pura/
 Developers can use pura without installing it permanently:
 
 ```bash
-npx pura-cli --help
+npx @nickname4th/pura-cli --help
 ```
 
 Or install globally:
 
 ```bash
-npm install -g pura-cli
+npm install -g @nickname4th/pura-cli
 pura-cli --help
 ```
 
@@ -204,14 +204,14 @@ Agent:
 
 ## Publishing
 
-The npm package name is `pura-cli` because `pura` is already taken on npm.
+The npm package is `@nickname4th/pura-cli` and installs the `pura-cli` binary.
 
 Release flow:
 
 1. Update `version` in `package.json`.
 2. Run `npm run check`, `npm run build`, and `npm pack --dry-run`.
 3. Push a tag like `v0.1.0`.
-4. GitHub Actions publishes `pura-cli` to npm and `ghcr.io/liutianjie/pura` to GHCR.
+4. GitHub Actions publishes `@nickname4th/pura-cli` to npm and `ghcr.io/liutianjie/pura` to GHCR.
 
 The release workflow requires an `NPM_TOKEN` repository secret.
 
