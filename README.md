@@ -2,7 +2,7 @@
 
 ![pura social preview](assets/pura-social-preview.png)
 
-pura is a LAN Android device mirror for product and design teams. A central Hub shows all online Android devices, while each developer runs a local Agent that talks to their own USB-connected phone through ADB.
+pura is a LAN Android device mirror for product and design teams. A central Hub shows all online Android devices, while each developer runs a local Agent that talks to their own USB-connected phone through ADB. Agents keep outbound connections to the Hub, so the Hub can run inside Docker without reaching back into developer laptops.
 
 No login, no cloud, no public tunnel. It is meant for trusted office networks.
 
@@ -105,9 +105,11 @@ Each developer connects their local Agent to the Hub. Once connected, the Hub we
 pura-cli connect 192.168.100.128:8787 --name "Zhang San"
 ```
 
-The Agent listens on `8788` by default and continuously reports local ADB devices to the Hub. Use the web UI to publish, rename, unpublish, and manage devices.
+The Agent keeps an outbound control WebSocket to the Hub and continuously reports local ADB devices. Use the web UI to publish, rename, unpublish, and manage devices.
 
-If the Hub cannot reach the auto-detected Agent URL, specify it:
+The Agent still exposes `8788` locally for diagnostics and standalone mode, but the Hub no longer depends on reverse HTTP access to that port. In normal Hub deployments, you should not need `--public-url`.
+
+For diagnostics, you can still override the announced local URL:
 
 ```bash
 pura-cli connect 192.168.100.128:8787 --name "Zhang San" --public-url http://192.168.100.45:8788
@@ -158,6 +160,7 @@ pura-cli connect device --serial RFCY10DHQ3P --name "Samsung S25" --owner "Li Si
 
 - Hub maintains online Agents and devices, serves the web UI, and proxies video WebSocket/tap requests.
 - Agent runs on each developer machine and owns ADB, screen capture, tap execution, and device metadata.
+- Agent opens outbound control/video WebSockets to the Hub. The Hub does not need to call back into Agent LAN addresses, which makes Docker/NAT/firewall deployment much more reliable.
 - CLI commands:
   - `pura-cli hub`
   - `pura-cli connect <hub>`
@@ -177,6 +180,8 @@ Hub:
 - `DELETE /api/devices/:deviceId/publication`
 - `DELETE /api/sessions/:id`
 - `WS /ws/sessions/:id/video`
+- `WS /ws/agents/:agentId/control`
+- `WS /ws/agents/:agentId/sessions/:agentSessionId/video`
 
 Agent:
 
@@ -196,7 +201,7 @@ Agent:
 - `HUB_URL=http://<hub-ip>:8787`
 - `AGENT_ID`
 - `AGENT_NAME`
-- `PUBLIC_URL=http://<agent-ip>:8788`
+- `PUBLIC_URL=http://<agent-ip>:8788` optional diagnostic URL; Hub control does not depend on it
 - `ADB_PATH=adb`
 - `STREAM_SIZE` optional; unset uses native device resolution
 - `STREAM_BITRATE=8000000`
@@ -212,15 +217,15 @@ Release flow:
 
 1. Update `version` in `package.json`.
 2. Run `npm run check`, `npm run build`, and `npm pack --dry-run`.
-3. Push a tag like `v0.1.0`.
-4. GitHub Actions publishes `@nickname4th/pura-cli` to npm and `ghcr.io/liutianjie/pura` to GHCR.
+3. Publish manually with `npm publish --access public`, or push a tag like `v0.1.3` to use the release workflow.
+4. The Docker workflow publishes `ghcr.io/liutianjie/pura:main` from `main` and builds both `linux/amd64` and `linux/arm64`.
 
 The release workflow requires an `NPM_TOKEN` repository secret.
 
 ## Notes
 
 - The current video path uses Android `screenrecord` H.264 output. No Android app or root is required.
-- Mouse control currently supports tap only.
+- Mouse control supports tap, long press, scroll/swipe, system keys, text input, screenshots, and shared cursor annotations.
 - Do not expose Hub or Agent ports directly to the public internet.
 - Agent Docker is intentionally not the default because local USB/ADB access is much smoother with native `pura-cli`.
 - Some Android builds enforce `screenrecord` time limits; the Agent restarts the stream automatically when it exits.

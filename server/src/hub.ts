@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type express from "express";
 import { WebSocket } from "ws";
 import { makeDeviceId, parseDeviceId } from "./device-id.js";
-import { httpToWs } from "./network.js";
 import { listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
 import type { AndroidDevice } from "./adb.js";
 import type { DevicePublication } from "./registry.js";
@@ -21,36 +20,72 @@ type AgentDevice = AndroidDevice & {
 
 type RegisteredAgent = AgentHeartbeat & {
   lastSeen: number;
+  control?: WebSocket;
 };
 
 type HubSession = {
   id: string;
   deviceId: string;
   agentId: string;
-  agentUrl: string;
   agentSessionId: string;
   serial: string;
   startedAt: number;
+  clients: Set<WebSocket>;
+  stream?: WebSocket;
+};
+
+type AgentRequestPayload = {
+  serial?: string;
+  body?: unknown;
+};
+
+type AgentResponseMessage = {
+  type: "response";
+  requestId: string;
+  ok: boolean;
+  body?: unknown;
+  error?: string;
+};
+
+type AgentHelloMessage = {
+  type: "hello";
+  agentId: string;
+  agentName?: string;
+};
+
+type PendingAgentRequest = {
+  resolve: (body: unknown) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+};
+
+type ScreenshotResponse = {
+  contentType?: string;
+  data: string;
 };
 
 const agents = new Map<string, RegisteredAgent>();
 const sessions = new Map<string, HubSession>();
+const pendingAgentRequests = new Map<string, PendingAgentRequest>();
 const AGENT_TTL_MS = Number(process.env.AGENT_TTL_MS ?? 15_000);
+const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.AGENT_REQUEST_TIMEOUT_MS ?? 30_000);
 
 export function installHubRoutes(app: express.Express) {
   app.post("/api/agents/heartbeat", (req, res) => {
     const body = req.body as Partial<AgentHeartbeat>;
-    if (!body.agentId || !body.url || !Array.isArray(body.devices)) {
-      res.status(400).json({ error: "agentId, url and devices are required" });
+    if (!body.agentId || !Array.isArray(body.devices)) {
+      res.status(400).json({ error: "agentId and devices are required" });
       return;
     }
 
+    const existing = agents.get(body.agentId);
     agents.set(body.agentId, {
       agentId: body.agentId,
       agentName: body.agentName,
-      url: body.url.replace(/\/$/, ""),
+      url: body.url?.replace(/\/$/, "") ?? existing?.url ?? "",
       devices: body.devices,
-      lastSeen: Date.now()
+      lastSeen: Date.now(),
+      control: existing?.control
     });
 
     res.json({ ok: true });
@@ -63,12 +98,15 @@ export function installHubRoutes(app: express.Express) {
   app.put("/api/devices/:deviceId/publication", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/publication`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body ?? {})
+      const body = await sendAgentRequest<{ publication?: DevicePublication }>(target.agent, "publish", {
+        serial: target.remoteSerial,
+        body: req.body ?? {}
       });
-      res.status(response.status).json(await response.json());
+      res.json({
+        publication: body.publication
+          ? { ...body.publication, serial: req.params.deviceId }
+          : body.publication
+      });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to publish device" });
     }
@@ -77,10 +115,14 @@ export function installHubRoutes(app: express.Express) {
   app.delete("/api/devices/:deviceId/publication", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/publication`, {
-        method: "DELETE"
+      const body = await sendAgentRequest<{ publication?: DevicePublication }>(target.agent, "unpublish", {
+        serial: target.remoteSerial
       });
-      res.status(response.status).json(await response.json());
+      res.json({
+        publication: body.publication
+          ? { ...body.publication, serial: req.params.deviceId }
+          : body.publication
+      });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to unpublish device" });
     }
@@ -93,25 +135,21 @@ export function installHubRoutes(app: express.Express) {
       if (restart) {
         await deleteHubSessionsForDevice(req.params.deviceId);
       }
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restart })
-      });
-      if (!response.ok) {
-        res.status(response.status).json(await response.json());
-        return;
-      }
 
-      const body = (await response.json()) as { session: PublicSession };
+      const sessionId = randomUUID();
+      const body = await sendAgentRequest<{ session: PublicSession }>(target.agent, "start-session", {
+        serial: target.remoteSerial,
+        body: { restart, hubSessionId: sessionId }
+      });
+
       const session: HubSession = {
-        id: randomUUID(),
+        id: sessionId,
         deviceId: req.params.deviceId,
         agentId: target.agent.agentId,
-        agentUrl: target.agent.url,
         agentSessionId: body.session.id,
         serial: target.remoteSerial,
-        startedAt: Date.now()
+        startedAt: Date.now(),
+        clients: new Set()
       };
 
       sessions.set(session.id, session);
@@ -129,18 +167,10 @@ export function installHubRoutes(app: express.Express) {
 
   app.get("/api/devices/:deviceId/screenshot", async (req, res) => {
     try {
-      const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/screenshot`);
-
-      if (!response.ok) {
-        res.status(response.status).json({ error: await response.text() });
-        return;
-      }
-
-      const image = Buffer.from(await response.arrayBuffer());
-      res.setHeader("Content-Type", response.headers.get("content-type") ?? "image/png");
+      const image = await captureRemoteScreenshot(req.params.deviceId);
+      res.setHeader("Content-Type", image.contentType);
       res.setHeader("Cache-Control", "no-store");
-      res.end(image);
+      res.end(image.buffer);
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to capture remote device screenshot" });
     }
@@ -148,16 +178,8 @@ export function installHubRoutes(app: express.Express) {
 
   app.post("/api/devices/:deviceId/screenshots", async (req, res) => {
     try {
-      const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/screenshot`);
-
-      if (!response.ok) {
-        res.status(response.status).json({ error: await response.text() });
-        return;
-      }
-
-      const image = Buffer.from(await response.arrayBuffer());
-      res.json({ screenshot: await saveScreenshot(image, req.params.deviceId) });
+      const image = await captureRemoteScreenshot(req.params.deviceId);
+      res.json({ screenshot: await saveScreenshot(image.buffer, req.params.deviceId) });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to save remote device screenshot" });
     }
@@ -175,12 +197,7 @@ export function installHubRoutes(app: express.Express) {
   app.post("/api/devices/:deviceId/tap", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/tap`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body ?? {})
-      });
-      res.status(response.status).json(await response.json());
+      res.json(await sendAgentRequest(target.agent, "tap", { serial: target.remoteSerial, body: req.body ?? {} }));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to tap remote device" });
     }
@@ -189,12 +206,7 @@ export function installHubRoutes(app: express.Express) {
   app.post("/api/devices/:deviceId/long-press", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/long-press`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body ?? {})
-      });
-      res.status(response.status).json(await response.json());
+      res.json(await sendAgentRequest(target.agent, "long-press", { serial: target.remoteSerial, body: req.body ?? {} }));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to long press remote device" });
     }
@@ -203,12 +215,7 @@ export function installHubRoutes(app: express.Express) {
   app.post("/api/devices/:deviceId/swipe", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/swipe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body ?? {})
-      });
-      res.status(response.status).json(await response.json());
+      res.json(await sendAgentRequest(target.agent, "swipe", { serial: target.remoteSerial, body: req.body ?? {} }));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to swipe remote device" });
     }
@@ -217,12 +224,7 @@ export function installHubRoutes(app: express.Express) {
   app.post("/api/devices/:deviceId/control", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
-      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/control`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body ?? {})
-      });
-      res.status(response.status).json(await response.json());
+      res.json(await sendAgentRequest(target.agent, "control", { serial: target.remoteSerial, body: req.body ?? {} }));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to control remote device" });
     }
@@ -237,24 +239,98 @@ export function installHubRoutes(app: express.Express) {
       return;
     }
 
-    await fetch(`${session.agentUrl}/api/sessions/${encodeURIComponent(session.agentSessionId)}`, {
-      method: "DELETE"
-    }).catch(() => undefined);
+    closeHubSession(session);
+    const agent = agents.get(session.agentId);
+    if (agent) {
+      await sendAgentRequest(agent, "delete-session", {
+        body: { sessionId: session.agentSessionId }
+      }).catch(() => undefined);
+    }
 
     res.json({ deleted: true });
   });
 }
 
-async function deleteHubSessionsForDevice(deviceId: string) {
-  const staleSessions = [...sessions.values()].filter((session) => session.deviceId === deviceId);
-  await Promise.all(
-    staleSessions.map(async (session) => {
-      sessions.delete(session.id);
-      await fetch(`${session.agentUrl}/api/sessions/${encodeURIComponent(session.agentSessionId)}`, {
-        method: "DELETE"
-      }).catch(() => undefined);
-    })
-  );
+export function attachAgentControlClient(agentId: string, socket: WebSocket) {
+  const existing = agents.get(agentId);
+  if (existing?.control && existing.control.readyState === WebSocket.OPEN) {
+    existing.control.close(1001, "replaced by a new control channel");
+  }
+
+  agents.set(agentId, {
+    agentId,
+    agentName: existing?.agentName,
+    url: existing?.url ?? "",
+    devices: existing?.devices ?? [],
+    lastSeen: Date.now(),
+    control: socket
+  });
+
+  socket.on("message", (data) => {
+    try {
+      const message = JSON.parse(data.toString("utf8")) as AgentResponseMessage | AgentHelloMessage;
+      if (message.type === "hello") {
+        const agent = agents.get(agentId);
+        if (agent) {
+          agent.agentName = message.agentName ?? agent.agentName;
+          agent.lastSeen = Date.now();
+        }
+        return;
+      }
+
+      if (message.type !== "response") return;
+      const pending = pendingAgentRequests.get(message.requestId);
+      if (!pending) return;
+
+      pendingAgentRequests.delete(message.requestId);
+      clearTimeout(pending.timer);
+      if (message.ok) {
+        pending.resolve(message.body);
+      } else {
+        pending.reject(new Error(message.error || "Agent request failed"));
+      }
+    } catch {
+      socket.close(1003, "invalid control message");
+    }
+  });
+
+  socket.on("close", () => {
+    const agent = agents.get(agentId);
+    if (agent?.control === socket) {
+      agent.control = undefined;
+      agent.lastSeen = Date.now();
+    }
+  });
+}
+
+export function attachAgentVideoStream(agentId: string, agentSessionId: string, hubSessionId: string, stream: WebSocket) {
+  const session = sessions.get(hubSessionId);
+  if (!session || session.agentId !== agentId || session.agentSessionId !== agentSessionId) {
+    stream.close(1008, "session not found");
+    return;
+  }
+
+  if (session.stream && session.stream.readyState === WebSocket.OPEN) {
+    session.stream.close(1001, "replaced by a new stream");
+  }
+
+  session.stream = stream;
+  stream.on("message", (data, isBinary) => {
+    for (const client of session.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data, { binary: isBinary });
+      }
+    }
+  });
+
+  stream.on("close", () => {
+    if (session.stream === stream) {
+      session.stream = undefined;
+      for (const client of session.clients) {
+        client.close(1001, "agent stream closed");
+      }
+    }
+  });
 }
 
 export function attachHubVideoClient(sessionId: string, client: WebSocket) {
@@ -264,25 +340,59 @@ export function attachHubVideoClient(sessionId: string, client: WebSocket) {
     return;
   }
 
-  const remote = new WebSocket(`${httpToWs(session.agentUrl)}/ws/sessions/${session.agentSessionId}/video`);
-
-  remote.on("message", (data, isBinary) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(data, { binary: isBinary });
+  session.clients.add(client);
+  const waitTimer = setTimeout(() => {
+    if (!session.stream || session.stream.readyState !== WebSocket.OPEN) {
+      client.close(1011, "agent stream unavailable");
     }
-  });
-
-  remote.on("error", () => {
-    client.close(1011, "remote stream error");
-  });
-
-  remote.on("close", () => {
-    client.close(1001, "remote stream closed");
-  });
+  }, 8000);
 
   client.on("close", () => {
-    remote.close();
+    clearTimeout(waitTimer);
+    session.clients.delete(client);
   });
+}
+
+async function captureRemoteScreenshot(deviceId: string) {
+  const target = findDevice(deviceId);
+  const screenshot = await sendAgentRequest<ScreenshotResponse>(target.agent, "screenshot", {
+    serial: target.remoteSerial
+  });
+
+  if (!screenshot.data) {
+    throw new Error("Agent returned an empty screenshot");
+  }
+
+  return {
+    contentType: screenshot.contentType ?? "image/png",
+    buffer: Buffer.from(screenshot.data, "base64")
+  };
+}
+
+async function deleteHubSessionsForDevice(deviceId: string) {
+  const staleSessions = [...sessions.values()].filter((session) => session.deviceId === deviceId);
+  await Promise.all(
+    staleSessions.map(async (session) => {
+      sessions.delete(session.id);
+      closeHubSession(session);
+      const agent = agents.get(session.agentId);
+      if (agent) {
+        await sendAgentRequest(agent, "delete-session", {
+          body: { sessionId: session.agentSessionId }
+        }).catch(() => undefined);
+      }
+    })
+  );
+}
+
+function closeHubSession(session: HubSession) {
+  if (session.stream && session.stream.readyState === WebSocket.OPEN) {
+    session.stream.close(1001, "session ended");
+  }
+
+  for (const client of session.clients) {
+    client.close(1001, "session ended");
+  }
 }
 
 function listHubDevices() {
@@ -295,6 +405,7 @@ function listHubDevices() {
       agentId: agent.agentId,
       agentName: agent.agentName,
       agentUrl: agent.url,
+      controlOnline: agent.control?.readyState === WebSocket.OPEN,
       publication: device.publication
         ? {
             ...device.publication,
@@ -309,7 +420,7 @@ function listHubSessions() {
   return [...sessions.values()].map((session) => ({
     id: session.id,
     serial: session.deviceId,
-    viewerCount: 0,
+    viewerCount: session.clients.size,
     startedAt: session.startedAt,
     stream: {
       codec: "h264",
@@ -336,10 +447,44 @@ function findDevice(deviceId: string) {
   };
 }
 
+function sendAgentRequest<T = unknown>(agent: RegisteredAgent, command: string, payload: AgentRequestPayload = {}) {
+  if (!agent.control || agent.control.readyState !== WebSocket.OPEN) {
+    throw new Error("Agent control channel is offline");
+  }
+
+  const requestId = randomUUID();
+  const message = {
+    type: "request",
+    requestId,
+    command,
+    ...payload
+  };
+
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingAgentRequests.delete(requestId);
+      reject(new Error(`Agent request timed out: ${command}`));
+    }, AGENT_REQUEST_TIMEOUT_MS);
+
+    pendingAgentRequests.set(requestId, {
+      resolve: (body) => resolve(body as T),
+      reject,
+      timer
+    });
+
+    agent.control?.send(JSON.stringify(message), (error) => {
+      if (!error) return;
+      pendingAgentRequests.delete(requestId);
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 function pruneAgents() {
   const now = Date.now();
   for (const [agentId, agent] of agents.entries()) {
-    if (now - agent.lastSeen > AGENT_TTL_MS) {
+    if (now - agent.lastSeen > AGENT_TTL_MS && agent.control?.readyState !== WebSocket.OPEN) {
       agents.delete(agentId);
     }
   }

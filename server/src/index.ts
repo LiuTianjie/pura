@@ -2,8 +2,8 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
-import { installAgentRoutes, startAgentHeartbeat } from "./agent.js";
-import { attachHubVideoClient, installHubRoutes } from "./hub.js";
+import { installAgentRoutes, startAgentControlChannel, startAgentHeartbeat } from "./agent.js";
+import { attachAgentControlClient, attachAgentVideoStream, attachHubVideoClient, installHubRoutes } from "./hub.js";
 import { getLanAddress } from "./network.js";
 import { attachPresenceClient } from "./presence.js";
 import { installScreenshotRoutes } from "./screenshots.js";
@@ -32,6 +32,7 @@ if (role === "hub") {
   installAgentRoutes(app);
   if (role === "agent") {
     startAgentHeartbeat({ hubUrl, agentId, agentName, publicUrl, port });
+    startAgentControlChannel({ hubUrl, agentId, agentName, publicUrl, port });
   }
 }
 
@@ -58,8 +59,10 @@ server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   const videoMatch = url.pathname.match(/^\/ws\/sessions\/([^/]+)\/video$/);
   const presenceMatch = url.pathname.match(/^\/ws\/presence\/([^/]+)$/);
+  const agentControlMatch = url.pathname.match(/^\/ws\/agents\/([^/]+)\/control$/);
+  const agentVideoMatch = url.pathname.match(/^\/ws\/agents\/([^/]+)\/sessions\/([^/]+)\/video$/);
 
-  if (!videoMatch && !presenceMatch) {
+  if (!videoMatch && !presenceMatch && !agentControlMatch && !agentVideoMatch) {
     socket.destroy();
     return;
   }
@@ -67,10 +70,21 @@ server.on("upgrade", (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (ws) => {
     if (presenceMatch) {
       attachPresenceClient(decodeURIComponent(presenceMatch[1]), ws);
-    } else if (role === "hub") {
+    } else if (role === "hub" && agentControlMatch) {
+      attachAgentControlClient(decodeURIComponent(agentControlMatch[1]), ws);
+    } else if (role === "hub" && agentVideoMatch) {
+      attachAgentVideoStream(
+        decodeURIComponent(agentVideoMatch[1]),
+        decodeURIComponent(agentVideoMatch[2]),
+        url.searchParams.get("hubSessionId") ?? "",
+        ws
+      );
+    } else if (role === "hub" && videoMatch) {
       attachHubVideoClient(videoMatch![1], ws);
-    } else {
+    } else if (videoMatch) {
       attachClient(videoMatch![1], ws);
+    } else {
+      ws.close(1008, "unsupported websocket route");
     }
   });
 });

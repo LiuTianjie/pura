@@ -114,11 +114,11 @@
           <article class="command-card reveal">
             <span class="step">02</span>
             <h3 data-i18n="quick.step2">Register Agent</h3>
-            <pre><code>npx pura-cli connect &lt;hub-lan-ip&gt;:8787 --name "Zhang San"</code></pre>
+            <pre><code>npx @nickname4th/pura-cli connect &lt;hub-lan-ip&gt;:8787 --name "Zhang San"</code></pre>
             <button
               class="copy-button"
               type="button"
-              data-copy='npx pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"'
+              data-copy='npx @nickname4th/pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"'
             >
               <span data-i18n="copy">Copy</span>
             </button>
@@ -126,11 +126,12 @@
           <article class="command-card reveal">
             <span class="step">03</span>
             <h3 data-i18n="quick.step3">Publish device</h3>
-            <pre><code>npx pura-cli connect device --name "Pixel 8" --owner "Zhang San"</code></pre>
+            <pre><code>open http://&lt;hub-lan-ip&gt;:8787
+# publish from the web UI</code></pre>
             <button
               class="copy-button"
               type="button"
-              data-copy='npx pura-cli connect device --name "Pixel 8" --owner "Zhang San"'
+              data-copy='open http://<hub-lan-ip>:8787'
             >
               <span data-i18n="copy">Copy</span>
             </button>
@@ -144,7 +145,7 @@
           <h2 data-i18n="arch.title">Shared visibility without shared USB.</h2>
           <p data-i18n="arch.body">
             The Hub owns discovery and session routing. Agents own physical devices, ADB, video
-            capture, and local tap execution.
+            capture, and local tap execution, then push control and video streams back to the Hub.
           </p>
         </div>
 
@@ -181,7 +182,7 @@
           <p class="eyebrow" data-i18n="deploy.eyebrow">Deployment</p>
           <h2 data-i18n="deploy.title">A small service for the office LAN.</h2>
           <p data-i18n="deploy.body">
-            The Hub runs as a containerized control plane. Agents stay native beside the hardware.
+            The Hub runs as a containerized control plane. Agents stay native beside the hardware and initiate outbound connections.
           </p>
         </div>
 
@@ -211,13 +212,13 @@ open http://&lt;hub-lan-ip&gt;:8787</code></pre>
           <span class="detail-kicker" data-i18n="detail.installKicker">Install</span>
           <h3 data-i18n="detail.installTitle">Lightweight Agent registration.</h3>
           <p data-i18n="detail.installBody">npx launches a local Agent, stores Hub settings, and reports authorized ADB devices.</p>
-          <pre><code>npx pura-cli --help</code></pre>
+          <pre><code>npx @nickname4th/pura-cli --help</code></pre>
         </article>
         <article class="detail-card reveal">
           <span class="detail-kicker" data-i18n="detail.controlKicker">Control</span>
           <h3 data-i18n="detail.controlTitle">Coordinate-accurate tap routing.</h3>
-          <p data-i18n="detail.controlBody">The Hub receives browser clicks; the owning Agent translates them into ADB input on the phone.</p>
-          <pre><code>POST /api/devices/:id/tap</code></pre>
+          <p data-i18n="detail.controlBody">The Hub receives browser actions and sends them through the Agent's outbound control channel.</p>
+          <pre><code>WS /ws/agents/:id/control</code></pre>
         </article>
         <article class="detail-card reveal">
           <span class="detail-kicker" data-i18n="detail.safetyKicker">Safety</span>
