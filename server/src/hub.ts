@@ -32,6 +32,7 @@ type HubSession = {
   startedAt: number;
   clients: Set<WebSocket>;
   stream?: WebSocket;
+  stopTimer?: NodeJS.Timeout;
 };
 
 type AgentRequestPayload = {
@@ -153,6 +154,7 @@ export function installHubRoutes(app: express.Express) {
       };
 
       sessions.set(session.id, session);
+      scheduleHubSessionStopIfIdle(session);
       res.json({
         session: {
           ...body.session,
@@ -341,6 +343,11 @@ export function attachHubVideoClient(sessionId: string, client: WebSocket) {
   }
 
   session.clients.add(client);
+  if (session.stopTimer) {
+    clearTimeout(session.stopTimer);
+    session.stopTimer = undefined;
+  }
+
   const waitTimer = setTimeout(() => {
     if (!session.stream || session.stream.readyState !== WebSocket.OPEN) {
       client.close(1011, "agent stream unavailable");
@@ -350,6 +357,7 @@ export function attachHubVideoClient(sessionId: string, client: WebSocket) {
   client.on("close", () => {
     clearTimeout(waitTimer);
     session.clients.delete(client);
+    scheduleHubSessionStopIfIdle(session);
   });
 }
 
@@ -386,6 +394,11 @@ async function deleteHubSessionsForDevice(deviceId: string) {
 }
 
 function closeHubSession(session: HubSession) {
+  if (session.stopTimer) {
+    clearTimeout(session.stopTimer);
+    session.stopTimer = undefined;
+  }
+
   if (session.stream && session.stream.readyState === WebSocket.OPEN) {
     session.stream.close(1001, "session ended");
   }
@@ -393,6 +406,22 @@ function closeHubSession(session: HubSession) {
   for (const client of session.clients) {
     client.close(1001, "session ended");
   }
+}
+
+function scheduleHubSessionStopIfIdle(session: HubSession) {
+  if (session.clients.size > 0 || session.stopTimer) return;
+
+  session.stopTimer = setTimeout(() => {
+    if (session.clients.size > 0) return;
+    sessions.delete(session.id);
+    closeHubSession(session);
+    const agent = agents.get(session.agentId);
+    if (agent) {
+      void sendAgentRequest(agent, "delete-session", {
+        body: { sessionId: session.agentSessionId }
+      }).catch(() => undefined);
+    }
+  }, 5000);
 }
 
 function listHubDevices() {

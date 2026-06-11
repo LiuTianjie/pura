@@ -1,6 +1,6 @@
 {
   "name": "@nickname4th/pura-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LAN Android device mirroring hub and developer CLI for distributed teams.",
   "license": "MIT",
   "type": "module",
