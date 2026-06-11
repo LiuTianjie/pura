@@ -1,0 +1,12 @@
+name: pura
+image: ghcr.io/liutianjie/pura:main
+region: home
+node: home-mac-mini
+exposure: tailscale-relay
+domain: pura.itool.tech
+port: 8787
+replicas: 1
+env:
+  ROLE: hub
+  HOST: 0.0.0.0
+  PORT: "8787"
