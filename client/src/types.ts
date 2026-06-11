@@ -43,3 +43,20 @@ export type DevicesResponse = {
   devices: AndroidDevice[];
   sessions: MirrorSession[];
 };
+
+export type ControlAction =
+  | "back"
+  | "home"
+  | "recents"
+  | "menu"
+  | "power"
+  | "volume_up"
+  | "volume_down"
+  | "mute"
+  | "enter"
+  | "delete"
+  | "swipe_up"
+  | "swipe_down"
+  | "swipe_left"
+  | "swipe_right"
+  | "text";

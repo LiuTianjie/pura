@@ -18,6 +18,23 @@ export type AndroidDevice = {
   };
 };
 
+export type ControlAction =
+  | "back"
+  | "home"
+  | "recents"
+  | "menu"
+  | "power"
+  | "volume_up"
+  | "volume_down"
+  | "mute"
+  | "enter"
+  | "delete"
+  | "swipe_up"
+  | "swipe_down"
+  | "swipe_left"
+  | "swipe_right"
+  | "text";
+
 const ADB = process.env.ADB_PATH ?? "adb";
 const INCLUDE_TCP_DEVICES = process.env.INCLUDE_TCP_DEVICES === "true";
 
@@ -57,6 +74,44 @@ export async function tapDevice(serial: string, xRatio: number, yRatio: number) 
   });
 
   return { x, y, width: size.width, height: size.height };
+}
+
+export async function controlDevice(serial: string, action: ControlAction, value?: string) {
+  if (action === "text") {
+    const text = sanitizeInputText(value ?? "");
+    if (!text) throw new Error("Text input is empty");
+
+    await execFileAsync(ADB, ["-s", serial, "shell", "input", "text", text], {
+      timeout: 5000,
+      maxBuffer: 64 * 1024
+    });
+
+    return { action, text };
+  }
+
+  const keyCode = keyEvents[action];
+  if (keyCode) {
+    await execFileAsync(ADB, ["-s", serial, "shell", "input", "keyevent", keyCode], {
+      timeout: 3000,
+      maxBuffer: 64 * 1024
+    });
+
+    return { action, keyCode };
+  }
+
+  if (action.startsWith("swipe_")) {
+    const size = await getDisplaySize(serial);
+    const [x1, y1, x2, y2] = swipePoints(action, size);
+
+    await execFileAsync(ADB, ["-s", serial, "shell", "input", "swipe", String(x1), String(y1), String(x2), String(y2), "280"], {
+      timeout: 4000,
+      maxBuffer: 64 * 1024
+    });
+
+    return { action, from: { x: x1, y: y1 }, to: { x: x2, y: y2 }, width: size.width, height: size.height };
+  }
+
+  throw new Error(`Unsupported control action: ${action}`);
 }
 
 function parseDeviceLine(line: string): AndroidDevice | null {
@@ -121,4 +176,35 @@ export async function getDisplaySize(serial: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+const keyEvents: Partial<Record<ControlAction, string>> = {
+  back: "KEYCODE_BACK",
+  home: "KEYCODE_HOME",
+  recents: "KEYCODE_APP_SWITCH",
+  menu: "KEYCODE_MENU",
+  power: "KEYCODE_POWER",
+  volume_up: "KEYCODE_VOLUME_UP",
+  volume_down: "KEYCODE_VOLUME_DOWN",
+  mute: "KEYCODE_VOLUME_MUTE",
+  enter: "KEYCODE_ENTER",
+  delete: "KEYCODE_DEL"
+};
+
+function swipePoints(action: ControlAction, size: { width: number; height: number }) {
+  const left = Math.round(size.width * 0.22);
+  const right = Math.round(size.width * 0.78);
+  const centerX = Math.round(size.width * 0.5);
+  const top = Math.round(size.height * 0.24);
+  const bottom = Math.round(size.height * 0.78);
+  const centerY = Math.round(size.height * 0.5);
+
+  if (action === "swipe_up") return [centerX, bottom, centerX, top];
+  if (action === "swipe_down") return [centerX, top, centerX, bottom];
+  if (action === "swipe_left") return [right, centerY, left, centerY];
+  return [left, centerY, right, centerY];
+}
+
+function sanitizeInputText(value: string) {
+  return value.trim().replaceAll("%", "%25").replace(/\s/g, "%s").slice(0, 500);
 }

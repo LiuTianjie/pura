@@ -587,6 +587,97 @@ button {
   min-width: 0;
 }
 
+.controlPanel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: rgba(23, 26, 24, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  animation: riseIn 520ms var(--ease-emphasized) 210ms both;
+}
+
+.controlGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.controlLabel {
+  width: 76px;
+  color: #b5c0b4;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.controlButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #1d211d;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    transform 150ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    opacity 160ms var(--ease-out);
+}
+
+.controlButton:hover:not(:disabled) {
+  border-color: #617057;
+  background: #242a24;
+  transform: translateY(-1px);
+}
+
+.controlButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.controlButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.textControl {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.textControl > svg {
+  color: var(--muted);
+}
+
+.textControl input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #111411;
+  border: 1px solid #394037;
+  border-radius: 7px;
+  outline: none;
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+
+.textControl input:focus {
+  border-color: var(--button);
+  box-shadow: 0 0 0 2px rgba(214, 255, 89, 0.14);
+}
+
 .publishPanel {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.7fr) minmax(220px, 1.2fr) auto;
@@ -919,6 +1010,18 @@ button {
 
   .publishPanel {
     grid-template-columns: 1fr;
+  }
+
+  .controlLabel {
+    width: 100%;
+  }
+
+  .textControl {
+    grid-template-columns: 1fr;
+  }
+
+  .textControl > svg {
+    display: none;
   }
 
   .publishActions {

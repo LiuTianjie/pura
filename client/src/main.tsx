@@ -2,10 +2,20 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client";
 import JMuxer from "jmuxer";
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Cable,
   Circle,
+  CornerDownLeft,
+  Delete,
   FileText,
+  Home,
+  Keyboard,
   Languages,
+  ListRestart,
+  Menu,
   MonitorPlay,
   MousePointer2,
   PencilLine,
@@ -15,10 +25,12 @@ import {
   Send,
   Smartphone,
   Usb,
-  UserRound
+  UserRound,
+  Volume2,
+  VolumeX
 } from "lucide-react";
-import { endSession, fetchDevices, publishDevice, startSession, tapDevice, unpublishDevice } from "./api";
-import type { AndroidDevice, DevicesResponse, MirrorSession } from "./types";
+import { controlDevice, endSession, fetchDevices, publishDevice, startSession, tapDevice, unpublishDevice } from "./api";
+import type { AndroidDevice, ControlAction, DevicesResponse, MirrorSession } from "./types";
 import "./styles.css";
 
 type PlayerStatus = "idle" | "connecting" | "live" | "error";
@@ -67,6 +79,27 @@ const messages = {
     openDevice: "Open device",
     preview: "Preview",
     noDevicesOnline: "No devices online",
+    controls: "Controls",
+    systemControls: "System",
+    gestureControls: "Gestures",
+    inputControls: "Input",
+    back: "Back",
+    home: "Home",
+    recents: "Recents",
+    menu: "Menu",
+    power: "Power",
+    volumeUp: "Vol +",
+    volumeDown: "Vol -",
+    mute: "Mute",
+    swipeUp: "Swipe up",
+    swipeDown: "Swipe down",
+    swipeLeft: "Swipe left",
+    swipeRight: "Swipe right",
+    enter: "Enter",
+    delete: "Delete",
+    textPlaceholder: "Type text to send",
+    sendText: "Send text",
+    errorControl: "Unable to control device",
     languageToggle: "中文"
   },
   zh: {
@@ -110,6 +143,27 @@ const messages = {
     openDevice: "进入设备",
     preview: "预览",
     noDevicesOnline: "暂无在线设备",
+    controls: "控制",
+    systemControls: "系统键",
+    gestureControls: "手势",
+    inputControls: "输入",
+    back: "返回",
+    home: "主页",
+    recents: "多任务",
+    menu: "菜单",
+    power: "电源",
+    volumeUp: "音量 +",
+    volumeDown: "音量 -",
+    mute: "静音",
+    swipeUp: "上滑",
+    swipeDown: "下滑",
+    swipeLeft: "左滑",
+    swipeRight: "右滑",
+    enter: "回车",
+    delete: "删除",
+    textPlaceholder: "输入要发送的文字",
+    sendText: "发送文字",
+    errorControl: "无法控制设备",
     languageToggle: "EN"
   }
 } as const;
@@ -419,6 +473,13 @@ function App() {
               </form>
             ) : null}
 
+            <ControlPanel
+              device={selectedDevice}
+              loading={loading}
+              t={t}
+              onError={(message) => setError(message)}
+            />
+
             <MirrorPlayer device={selectedDevice} session={session} t={t} />
           </>
         )}
@@ -495,6 +556,85 @@ function DeviceGrid({
   );
 }
 
+function ControlPanel({
+  device,
+  loading,
+  t,
+  onError
+}: {
+  device: AndroidDevice | null;
+  loading: boolean;
+  t: (key: MessageKey) => string;
+  onError: (message: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const disabled = !device || device.state !== "device" || loading;
+
+  const sendControl = async (action: ControlAction, value?: string) => {
+    if (!device || disabled) return;
+    try {
+      await controlDevice(device.serial, action, value);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : t("errorControl"));
+    }
+  };
+
+  const sendText = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!text.trim()) return;
+    await sendControl("text", text);
+    setText("");
+  };
+
+  return (
+    <section className="controlPanel" aria-label={t("controls")}>
+      <div className="controlGroup">
+        <span className="controlLabel">{t("systemControls")}</span>
+        <ControlButton icon={<ArrowLeft size={15} />} label={t("back")} disabled={disabled} onClick={() => void sendControl("back")} />
+        <ControlButton icon={<Home size={15} />} label={t("home")} disabled={disabled} onClick={() => void sendControl("home")} />
+        <ControlButton icon={<ListRestart size={15} />} label={t("recents")} disabled={disabled} onClick={() => void sendControl("recents")} />
+        <ControlButton icon={<Menu size={15} />} label={t("menu")} disabled={disabled} onClick={() => void sendControl("menu")} />
+        <ControlButton icon={<Power size={15} />} label={t("power")} disabled={disabled} onClick={() => void sendControl("power")} />
+      </div>
+
+      <div className="controlGroup">
+        <span className="controlLabel">{t("gestureControls")}</span>
+        <ControlButton icon={<ArrowUp size={15} />} label={t("swipeUp")} disabled={disabled} onClick={() => void sendControl("swipe_up")} />
+        <ControlButton icon={<ArrowDown size={15} />} label={t("swipeDown")} disabled={disabled} onClick={() => void sendControl("swipe_down")} />
+        <ControlButton icon={<ArrowLeft size={15} />} label={t("swipeLeft")} disabled={disabled} onClick={() => void sendControl("swipe_left")} />
+        <ControlButton icon={<ArrowRight size={15} />} label={t("swipeRight")} disabled={disabled} onClick={() => void sendControl("swipe_right")} />
+      </div>
+
+      <div className="controlGroup">
+        <span className="controlLabel">{t("inputControls")}</span>
+        <ControlButton icon={<Volume2 size={15} />} label={t("volumeUp")} disabled={disabled} onClick={() => void sendControl("volume_up")} />
+        <ControlButton icon={<Volume2 size={15} />} label={t("volumeDown")} disabled={disabled} onClick={() => void sendControl("volume_down")} />
+        <ControlButton icon={<VolumeX size={15} />} label={t("mute")} disabled={disabled} onClick={() => void sendControl("mute")} />
+        <ControlButton icon={<CornerDownLeft size={15} />} label={t("enter")} disabled={disabled} onClick={() => void sendControl("enter")} />
+        <ControlButton icon={<Delete size={15} />} label={t("delete")} disabled={disabled} onClick={() => void sendControl("delete")} />
+      </div>
+
+      <form className="textControl" onSubmit={(event) => void sendText(event)}>
+        <Keyboard size={15} />
+        <input value={text} onChange={(event) => setText(event.target.value)} placeholder={t("textPlaceholder")} disabled={disabled} />
+        <button className="primary" type="submit" disabled={disabled || !text.trim()}>
+          <Send size={15} />
+          {t("sendText")}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function ControlButton({ icon, label, disabled, onClick }: { icon: React.ReactNode; label: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button className="controlButton" type="button" disabled={disabled} onClick={onClick} title={label}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function MirrorPlayer({ device, session, t }: { device: AndroidDevice | null; session: MirrorSession | null; t: (key: MessageKey) => string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [status, setStatus] = useState<PlayerStatus>("idle");
@@ -541,7 +681,7 @@ function MirrorPlayer({ device, session, t }: { device: AndroidDevice | null; se
 
   const handleClick = async (event: React.MouseEvent<HTMLVideoElement>) => {
     if (!device || device.state !== "device") return;
-    const ratios = getObjectFitRatios(event.currentTarget, event.clientX, event.clientY);
+    const ratios = getObjectFitRatios(event.currentTarget, event.clientX, event.clientY, device);
     if (!ratios) return;
 
     setTapPulse({ x: ratios.displayX, y: ratios.displayY, id: Date.now() });
@@ -550,7 +690,7 @@ function MirrorPlayer({ device, session, t }: { device: AndroidDevice | null; se
 
   return (
     <section className="stage">
-      <div className="screenFrame">
+      <div className="screenFrame" style={screenFrameStyle(device)}>
         <video ref={videoRef} className="screen" muted playsInline autoPlay onClick={(event) => void handleClick(event)} />
         {tapPulse ? <span className="tapPulse" key={tapPulse.id} style={{ left: tapPulse.x, top: tapPulse.y }} /> : null}
         <div className={`statusBadge ${status}`}>
@@ -568,10 +708,10 @@ function MirrorPlayer({ device, session, t }: { device: AndroidDevice | null; se
   );
 }
 
-function getObjectFitRatios(video: HTMLVideoElement, clientX: number, clientY: number) {
+function getObjectFitRatios(video: HTMLVideoElement, clientX: number, clientY: number, device: AndroidDevice) {
   const rect = video.getBoundingClientRect();
-  const videoWidth = video.videoWidth || rect.width;
-  const videoHeight = video.videoHeight || rect.height;
+  const videoWidth = device.size?.width || video.videoWidth || rect.width;
+  const videoHeight = device.size?.height || video.videoHeight || rect.height;
   const elementRatio = rect.width / rect.height;
   const videoRatio = videoWidth / videoHeight;
 
@@ -626,6 +766,14 @@ function displayName(device: AndroidDevice) {
 function deviceAspectRatio(device: AndroidDevice) {
   if (!device.size) return "9 / 16";
   return `${device.size.width} / ${device.size.height}`;
+}
+
+function screenFrameStyle(device: AndroidDevice | null): React.CSSProperties | undefined {
+  if (!device?.size) return undefined;
+  return {
+    aspectRatio: deviceAspectRatio(device),
+    maxWidth: `min(100%, max(260px, calc((100vh - 240px) * ${device.size.width / device.size.height})))`
+  };
 }
 
 function statusLabel(status: PlayerStatus, t: (key: MessageKey) => string) {

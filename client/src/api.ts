@@ -1,4 +1,4 @@
-import type { DevicePublication, DevicesResponse, MirrorSession } from "./types";
+import type { ControlAction, DevicePublication, DevicesResponse, MirrorSession } from "./types";
 
 export async function fetchDevices(): Promise<DevicesResponse> {
   const response = await fetch("/api/devices");
@@ -29,6 +29,19 @@ export async function tapDevice(serial: string, xRatio: number, yRatio: number) 
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ xRatio, yRatio })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function controlDevice(serial: string, action: ControlAction, value?: string) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/control`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ action, value })
   });
 
   if (!response.ok) throw new Error(await readError(response));

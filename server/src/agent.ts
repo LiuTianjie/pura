@@ -1,5 +1,5 @@
 import type express from "express";
-import { listDevices, tapDevice } from "./adb.js";
+import { controlDevice, listDevices, tapDevice, type ControlAction } from "./adb.js";
 import { getLanAddress, normalizeHttpUrl } from "./network.js";
 import { getPublications, publishDevice, unpublishDevice } from "./registry.js";
 import { deleteSession, getOrCreateSession, listSessions } from "./sessions.js";
@@ -59,10 +59,45 @@ export function installAgentRoutes(app: express.Express) {
     }
   });
 
+  app.post("/api/devices/:serial/control", async (req, res) => {
+    const action = req.body?.action as ControlAction | undefined;
+
+    if (!action || !controlActions.includes(action)) {
+      res.status(400).json({ error: "A supported control action is required" });
+      return;
+    }
+
+    try {
+      res.json({ control: await controlDevice(req.params.serial, action, req.body?.value) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to control device"
+      });
+    }
+  });
+
   app.delete("/api/sessions/:id", (req, res) => {
     res.json({ deleted: deleteSession(req.params.id) });
   });
 }
+
+const controlActions: ControlAction[] = [
+  "back",
+  "home",
+  "recents",
+  "menu",
+  "power",
+  "volume_up",
+  "volume_down",
+  "mute",
+  "enter",
+  "delete",
+  "swipe_up",
+  "swipe_down",
+  "swipe_left",
+  "swipe_right",
+  "text"
+];
 
 export function startAgentHeartbeat(options: AgentOptions) {
   if (!options.hubUrl) return;

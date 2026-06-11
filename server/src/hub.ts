@@ -134,6 +134,20 @@ export function installHubRoutes(app: express.Express) {
     }
   });
 
+  app.post("/api/devices/:deviceId/control", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body ?? {})
+      });
+      res.status(response.status).json(await response.json());
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to control remote device" });
+    }
+  });
+
   app.delete("/api/sessions/:id", async (req, res) => {
     const session = sessions.get(req.params.id);
     sessions.delete(req.params.id);
@@ -208,7 +222,7 @@ function listHubSessions() {
     stream: {
       codec: "h264",
       container: "annexb",
-      size: process.env.STREAM_SIZE ?? "1280x720",
+      size: process.env.STREAM_SIZE ?? "native",
       bitrate: process.env.STREAM_BITRATE ?? "1500000"
     }
   }));

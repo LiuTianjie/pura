@@ -18,7 +18,7 @@ type MirrorSession = {
 const sessions = new Map<string, MirrorSession>();
 const sessionsBySerial = new Map<string, string>();
 
-const STREAM_SIZE = process.env.STREAM_SIZE ?? "1280x720";
+const STREAM_SIZE = process.env.STREAM_SIZE;
 const STREAM_BITRATE = process.env.STREAM_BITRATE ?? "1500000";
 const STREAM_TIME_LIMIT_SECONDS = process.env.STREAM_TIME_LIMIT_SECONDS ?? "180";
 
@@ -98,20 +98,24 @@ export function listSessions(): PublicSession[] {
 function startStream(session: MirrorSession) {
   if (session.process || session.restartTimer) return;
 
-  const adb = adbCommand([
+  const args = [
     "-s",
     session.serial,
     "exec-out",
     "screenrecord",
     "--output-format=h264",
-    "--size",
-    STREAM_SIZE,
     "--bit-rate",
     STREAM_BITRATE,
     "--time-limit",
     STREAM_TIME_LIMIT_SECONDS,
     "-"
-  ]);
+  ];
+
+  if (STREAM_SIZE) {
+    args.splice(6, 0, "--size", STREAM_SIZE);
+  }
+
+  const adb = adbCommand(args);
 
   const child = spawn(adb.command, adb.args, {
     stdio: ["ignore", "pipe", "pipe"]
@@ -185,7 +189,7 @@ function toPublicSession(session: MirrorSession): PublicSession {
     stream: {
       codec: "h264",
       container: "annexb",
-      size: STREAM_SIZE,
+      size: STREAM_SIZE ?? "native",
       bitrate: STREAM_BITRATE
     }
   };
