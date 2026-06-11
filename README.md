@@ -51,7 +51,7 @@ https://liutianjie.github.io/pura/
 - Android platform-tools: `adb`
 - Android USB debugging enabled and authorized on each developer machine
 - Docker and Docker Compose for Hub deployment
-- Hub can reach every Agent over the LAN
+- Hub is reachable from developer machines over the LAN
 - A modern browser
 
 ## Installation
@@ -85,6 +85,8 @@ Recommended Docker Compose deployment:
 docker compose up -d
 ```
 
+The compose file mounts a `pura-data` volume at `/data`. Hub-side screenshots and per-device discussion document bindings are stored there, so keep this volume when upgrading.
+
 The included compose file builds the local image by default. To use a published GHCR image:
 
 ```bash
@@ -94,8 +96,26 @@ PURA_IMAGE=ghcr.io/liutianjie/pura:main docker compose up -d
 Equivalent Node.js deployment:
 
 ```bash
-pura-cli hub --host 0.0.0.0 --port 8787
+DATA_DIR=data-hub pura-cli hub --host 0.0.0.0 --port 8787
 ```
+
+### Feishu / Lark Discussion Documents
+
+Pura can bind one Feishu/Lark Docx discussion document per device. Enable this feature only when your team needs it. In the control sidebar, paste an existing document URL or create a new document, then use the screenshot action to append the time, device name, optional note, and screenshot to the document. The bound document can also be opened in a right-side drawer with an editable URL bar.
+
+Configure these environment variables on the Hub:
+
+```bash
+PURA_FEATURE_LARK_DOCS=true
+LARK_APP_ID=cli_xxx
+LARK_APP_SECRET=xxx
+```
+
+`LARK_DOC_FOLDER_TOKEN` is optional. When set, it becomes the default folder for quick-created documents. Without it, quick-created documents are created in the app's default location.
+
+When `PURA_FEATURE_LARK_DOCS` is not `true`, the web UI hides all Feishu/Lark document controls. If the feature is enabled but app id or secret are missing, the web UI shows "Lark app is not configured" and hides create/write actions.
+
+Required Feishu app permissions include Docx document create/edit and document media upload (`docs:document.media:upload`). Binding Wiki URLs additionally needs Wiki node read permission, such as `wiki:wiki:readonly`, and access to the target Wiki node. Give the app access to the target folder, Wiki node, or document before using quick-create or screenshot insertion.
 
 ## Developer Agent
 
@@ -178,6 +198,10 @@ Hub:
 - `POST /api/devices/:deviceId/tap`
 - `PUT /api/devices/:deviceId/publication`
 - `DELETE /api/devices/:deviceId/publication`
+- `GET /api/devices/:deviceId/discussion-doc`
+- `PUT /api/devices/:deviceId/discussion-doc`
+- `POST /api/devices/:deviceId/discussion-doc`
+- `POST /api/devices/:deviceId/screenshots/:screenshotId/discussion-doc`
 - `DELETE /api/sessions/:id`
 - `WS /ws/sessions/:id/video`
 - `WS /ws/agents/:agentId/control`
@@ -208,6 +232,11 @@ Agent:
 - `STREAM_TIME_LIMIT_SECONDS=180`
 - `INCLUDE_TCP_DEVICES=true`
 - `DATA_DIR=data-agent`
+- `PURA_FEATURE_LARK_DOCS=true` optional feature gate for Feishu/Lark discussion docs; default off
+- `LARK_APP_ID`, `LARK_APP_SECRET` optional Hub-only Feishu/Lark Docx integration
+- `LARK_DOC_FOLDER_TOKEN` optional default folder for quick-created discussion docs
+- `LARK_OPEN_BASE_URL=https://open.feishu.cn` optional override
+- `LARK_DOC_BASE_URL=https://www.feishu.cn` optional generated document link base
 
 ## Publishing
 

@@ -46,6 +46,16 @@ export function listDeviceScreenshots(deviceSerial: string): SavedScreenshot[] {
   return readIndex().screenshots.filter((screenshot) => screenshot.deviceSerial === deviceSerial).slice(0, 24);
 }
 
+export function getScreenshot(screenshotId: string, deviceSerial?: string): SavedScreenshot | undefined {
+  return readIndex().screenshots.find(
+    (screenshot) => screenshot.id === screenshotId && (!deviceSerial || screenshot.deviceSerial === deviceSerial)
+  );
+}
+
+export function getScreenshotPath(screenshot: SavedScreenshot): string {
+  return path.join(screenshotsDir, path.basename(screenshot.fileName));
+}
+
 export async function saveScreenshot(image: Buffer, deviceSerial: string): Promise<SavedScreenshot> {
   await fs.promises.mkdir(screenshotsDir, { recursive: true });
   const createdAt = new Date().toISOString();

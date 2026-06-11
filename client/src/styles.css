@@ -930,6 +930,8 @@ a.iconButton {
   display: grid;
   gap: 16px;
   width: min(390px, calc(100vw - 44px));
+  max-height: calc(100vh - 44px);
+  overflow: auto;
   padding: 16px;
   color: var(--text);
   background: rgba(22, 25, 22, 0.96);
@@ -1024,6 +1026,9 @@ a.iconButton {
 }
 
 .managerSectionHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #b8c4b6;
   font-size: 12px;
   font-weight: 800;
@@ -1032,6 +1037,372 @@ a.iconButton {
 .managerSectionHeader .secondary {
   min-height: 32px;
   padding: 0 10px;
+}
+
+.managerDoc,
+.discussionDocPanel {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.discussionDocPanel {
+  background:
+    linear-gradient(180deg, rgba(26, 31, 26, 0.66), rgba(14, 17, 14, 0.48)),
+    rgba(13, 16, 13, 0.58);
+  border-color: rgba(148, 166, 143, 0.18);
+  animation: riseIn 520ms var(--ease-emphasized) 250ms both;
+}
+
+.docHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.docHeader div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.docHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #d7e4d3;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.docHeader strong {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.docIconLink {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  color: #dfe9dc;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.docIconLink:hover {
+  border-color: rgba(214, 255, 89, 0.34);
+  background: rgba(214, 255, 89, 0.08);
+}
+
+.docConfigHint {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  color: #ffe1d8;
+  background: rgba(255, 107, 98, 0.1);
+  border: 1px solid rgba(255, 107, 98, 0.28);
+  border-radius: 7px;
+}
+
+.docConfigHint strong {
+  font-size: 12px;
+}
+
+.docConfigHint span {
+  color: #d7b6ad;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.docBindForm,
+.docNoteField {
+  display: grid;
+  gap: 7px;
+}
+
+.docBindForm label,
+.docNoteField {
+  display: grid;
+  gap: 6px;
+}
+
+.docBindForm label span,
+.docNoteField span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b8c4b6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.docBindForm input,
+.docNoteField textarea,
+.docInsertArea textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #111411;
+  border: 1px solid #394037;
+  border-radius: 7px;
+  outline: none;
+}
+
+.docBindForm.compact {
+  gap: 8px;
+}
+
+.docBindRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 6px 0 10px;
+  color: var(--muted);
+  background: rgba(4, 6, 4, 0.42);
+  border: 1px solid #333b32;
+  border-radius: 7px;
+}
+
+.docBindRow input {
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.docBindRow:focus-within {
+  border-color: rgba(214, 255, 89, 0.55);
+  box-shadow: 0 0 0 2px rgba(214, 255, 89, 0.1);
+}
+
+.docCompactActions {
+  display: flex;
+  gap: 7px;
+}
+
+.docCompactActions .docSmallButton {
+  flex: 1;
+}
+
+.docSmallButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 9px;
+  color: #dfe9dc;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.docSmallButton.primaryTone {
+  color: #101408;
+  background: var(--button);
+  border-color: rgba(214, 255, 89, 0.72);
+}
+
+.docSmallButton:hover:not(:disabled) {
+  border-color: rgba(214, 255, 89, 0.34);
+  background: rgba(214, 255, 89, 0.08);
+}
+
+.docSmallButton.primaryTone:hover:not(:disabled) {
+  background: #e2ff70;
+}
+
+.docSmallButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.docInsertArea {
+  display: grid;
+  gap: 7px;
+}
+
+.docInsertArea textarea {
+  min-height: 54px;
+  padding: 8px 9px;
+  resize: vertical;
+}
+
+.docBindForm input:focus,
+.docNoteField textarea:focus,
+.docInsertArea textarea:focus {
+  border-color: var(--button);
+  box-shadow: 0 0 0 2px rgba(214, 255, 89, 0.14);
+  background: #151a14;
+}
+
+.docBindRow input:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.docInsertButton {
+  min-height: 34px;
+  width: 100%;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.docStatus {
+  padding: 7px 9px;
+  color: #dfffb5;
+  background: rgba(154, 255, 108, 0.08);
+  border: 1px solid rgba(154, 255, 108, 0.18);
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.embeddedDocPanel {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  min-width: 360px;
+  max-width: min(920px, 48vw);
+  height: 100%;
+  min-height: 520px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(23, 27, 24, 0.97), rgba(10, 12, 10, 0.985)),
+    #101310;
+  border: 1px solid rgba(214, 255, 89, 0.2);
+  border-radius: 8px;
+  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.18);
+  animation: drawerIn 260ms var(--ease-emphasized) both;
+}
+
+.embeddedDocResizeHandle {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: -5px;
+  z-index: 2;
+  width: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+}
+
+.embeddedDocResizeHandle::after {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 58px;
+  background: rgba(214, 255, 89, 0.34);
+  border-radius: 999px;
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+
+.embeddedDocResizeHandle:hover::after,
+.embeddedDocResizeHandle:focus-visible::after {
+  background: rgba(214, 255, 89, 0.78);
+  opacity: 1;
+}
+
+.embeddedDocHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.embeddedDocHeader div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.embeddedDocHeader span {
+  color: #dce9d7;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.embeddedDocActions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.embeddedDocAddressBar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.embeddedDocAddressBar input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #111411;
+  border: 1px solid #394037;
+  border-radius: 7px;
+  outline: none;
+}
+
+.embeddedDocAddressBar input:focus {
+  border-color: var(--button);
+  box-shadow: 0 0 0 2px rgba(214, 255, 89, 0.12);
+}
+
+.embeddedDocHint {
+  margin: 0;
+  padding: 8px 14px;
+  color: #aeb9ad;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.embeddedDocFrame {
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  border: 0;
 }
 
 .screenshotEmpty {
@@ -1060,6 +1431,10 @@ a.iconButton {
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--line);
   border-radius: 7px;
+}
+
+.screenshotItem.hasDocAction {
+  grid-template-columns: 42px minmax(0, 1fr) auto auto auto;
 }
 
 .screenshotItem img {
@@ -1100,6 +1475,19 @@ a.iconButton {
   gap: 14px;
   align-items: stretch;
   min-height: 0;
+}
+
+.focusSurface.withEmbeddedDoc {
+  grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr) auto;
+}
+
+.sidePanelStack {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .controlPanel {
@@ -1321,6 +1709,33 @@ a.iconButton {
   background: var(--red);
 }
 
+.fullscreenButton {
+  position: absolute;
+  right: 13px;
+  top: 52px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  color: #dce5da;
+  background: rgba(10, 12, 10, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.fullscreenButton:hover {
+  background: rgba(214, 255, 89, 0.13);
+  border-color: rgba(214, 255, 89, 0.34);
+  transform: translateY(-1px);
+}
+
 .standby {
   position: absolute;
   inset: 0;
@@ -1500,6 +1915,17 @@ a.iconButton {
   }
 }
 
+@keyframes drawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes cursorPop {
   from {
     opacity: 0;
@@ -1615,6 +2041,26 @@ a.iconButton {
 
   .focusSurface {
     grid-template-columns: 1fr;
+  }
+
+  .focusSurface.withEmbeddedDoc {
+    grid-template-columns: 1fr;
+  }
+
+  .discussionDocPanel,
+  .embeddedDocPanel {
+    display: none;
+  }
+
+  .embeddedDocPanel {
+    width: 100% !important;
+    max-width: none;
+    min-width: 0;
+    min-height: 520px;
+  }
+
+  .embeddedDocResizeHandle {
+    display: none;
   }
 
   .publishPanel {

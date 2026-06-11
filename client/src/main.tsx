@@ -16,14 +16,20 @@ import {
   Download,
   Eye,
   EyeOff,
+  ExternalLink,
+  FileText,
   Home,
   Keyboard,
   Languages,
+  Link,
   ListRestart,
+  Maximize2,
   Menu,
   MonitorPlay,
   MousePointer2,
+  PanelRightOpen,
   Power,
+  Plus,
   Radio,
   RefreshCw,
   Send,
@@ -36,8 +42,24 @@ import {
   VolumeX,
   X
 } from "lucide-react";
-import { controlDevice, endSession, fetchDeviceScreenshots, fetchDevices, longPressDevice, publishDevice, saveDeviceScreenshot, startSession, swipeDevice, tapDevice, unpublishDevice } from "./api";
-import type { AndroidDevice, ControlAction, DevicesResponse, MirrorSession, SavedScreenshot } from "./types";
+import {
+  bindDiscussionDoc,
+  controlDevice,
+  createDiscussionDoc,
+  endSession,
+  fetchDeviceScreenshots,
+  fetchDevices,
+  fetchDiscussionDoc,
+  insertScreenshotToDiscussionDoc,
+  longPressDevice,
+  publishDevice,
+  saveDeviceScreenshot,
+  startSession,
+  swipeDevice,
+  tapDevice,
+  unpublishDevice
+} from "./api";
+import type { AndroidDevice, ControlAction, DevicesResponse, DiscussionDocStatus, MirrorSession, SavedScreenshot } from "./types";
 import "./styles.css";
 
 type PlayerStatus = "idle" | "connecting" | "live" | "error";
@@ -61,6 +83,7 @@ const messages = {
     forceRestartView: "Force restart",
     restartView: "Restart view",
     openView: "Open view",
+    fullscreenView: "Fullscreen",
     unknownSize: "Unknown size",
     clickToTap: "Click, scroll, hold",
     annotationControl: "Control",
@@ -76,6 +99,22 @@ const messages = {
     deviceName: "Device name",
     deviceManagement: "Device management",
     deviceScreenshots: "Device screenshots",
+    discussionDoc: "Discussion doc",
+    discussionDocMissing: "Lark app is not configured",
+    discussionDocMissingHint: "Set LARK_APP_ID and LARK_APP_SECRET on the Hub. LARK_DOC_FOLDER_TOKEN is only an optional default folder.",
+    discussionDocUrl: "Lark document URL",
+    bindDoc: "Bind doc",
+    createDoc: "New doc",
+    openDoc: "Open doc",
+    openDocInside: "Open inside Pura",
+    closeDocPreview: "Close document preview",
+    resizeDocPreview: "Resize document preview",
+    docPreviewHint: "If Feishu blocks embedding, use the external open button.",
+    insertDoc: "Insert into doc",
+    docInserted: "Inserted into doc",
+    docNotePlaceholder: "Optional note for this screenshot",
+    noDiscussionDoc: "No document bound yet",
+    errorDiscussionDoc: "Unable to update discussion document",
     developer: "Developer",
     download: "Download",
     owner: "Owner",
@@ -143,6 +182,7 @@ const messages = {
     forceRestartView: "强制重启",
     restartView: "重启画面",
     openView: "打开画面",
+    fullscreenView: "全屏看",
     unknownSize: "未知尺寸",
     clickToTap: "点击、滚动、长按",
     annotationControl: "控制",
@@ -158,6 +198,22 @@ const messages = {
     deviceName: "设备名称",
     deviceManagement: "设备管理",
     deviceScreenshots: "设备截图",
+    discussionDoc: "讨论文档",
+    discussionDocMissing: "未配置飞书应用",
+    discussionDocMissingHint: "请在 Hub 配置 LARK_APP_ID 和 LARK_APP_SECRET。LARK_DOC_FOLDER_TOKEN 只是可选默认目录。",
+    discussionDocUrl: "飞书文档链接",
+    bindDoc: "绑定文档",
+    createDoc: "新建文档",
+    openDoc: "打开文档",
+    openDocInside: "内部查看",
+    closeDocPreview: "关闭文档预览",
+    resizeDocPreview: "调整文档宽度",
+    docPreviewHint: "如果飞书限制嵌入，请使用外部打开。",
+    insertDoc: "插入文档",
+    docInserted: "已插入文档",
+    docNotePlaceholder: "本次截图的可选备注",
+    noDiscussionDoc: "暂未绑定文档",
+    errorDiscussionDoc: "无法更新讨论文档",
     developer: "研发",
     download: "下载",
     owner: "负责人",
@@ -229,6 +285,11 @@ function App() {
   const [clearSignal, setClearSignal] = useState(0);
   const [latestScreenshot, setLatestScreenshot] = useState<SavedScreenshot | null>(null);
   const [screenshotCopied, setScreenshotCopied] = useState(false);
+  const [selectedDiscussionDoc, setSelectedDiscussionDoc] = useState<DiscussionDocStatus | null>(null);
+  const [embeddedDocUrl, setEmbeddedDocUrl] = useState<string | null>(null);
+  const [embeddedDocWidth, setEmbeddedDocWidth] = useState(readEmbeddedDocWidth);
+  const deviceUiSocketRef = useRef<WebSocket | null>(null);
+  const embeddedDocUrlRef = useRef<string | null>(null);
   const t = useCallback((key: MessageKey) => messages[locale][key], [locale]);
 
   const selectedDevice = useMemo(
@@ -247,6 +308,26 @@ function App() {
     () => data.devices.find((device) => device.serial === managedSerial) ?? null,
     [data.devices, managedSerial]
   );
+
+  useEffect(() => {
+    if (!selectedDevice) {
+      setSelectedDiscussionDoc(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchDiscussionDoc(selectedDevice.serial)
+      .then((status) => {
+        if (!cancelled) setSelectedDiscussionDoc(status);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedDiscussionDoc(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDevice?.serial]);
 
   const refresh = useCallback(async () => {
     try {
@@ -275,10 +356,71 @@ function App() {
   }, [cursorsEnabled]);
 
   useEffect(() => {
+    window.localStorage.setItem("pura.embeddedDocWidth", String(embeddedDocWidth));
+  }, [embeddedDocWidth]);
+
+  useEffect(() => {
+    embeddedDocUrlRef.current = embeddedDocUrl;
+  }, [embeddedDocUrl]);
+
+  const sendDeviceUiState = useCallback((state: { embeddedDocUrl?: string | null; embeddedDocWidth?: number }) => {
+    const socket = deviceUiSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "state", state }));
+  }, []);
+
+  const openEmbeddedDoc = useCallback(
+    (url: string) => {
+      setEmbeddedDocUrl(url);
+      sendDeviceUiState({ embeddedDocUrl: url, embeddedDocWidth });
+    },
+    [embeddedDocWidth, sendDeviceUiState]
+  );
+
+  const closeEmbeddedDoc = useCallback(() => {
+    setEmbeddedDocUrl(null);
+    sendDeviceUiState({ embeddedDocUrl: null, embeddedDocWidth });
+  }, [embeddedDocWidth, sendDeviceUiState]);
+
+  const resizeEmbeddedDoc = useCallback(
+    (width: number) => {
+      setEmbeddedDocWidth(width);
+      sendDeviceUiState({ embeddedDocUrl: embeddedDocUrlRef.current, embeddedDocWidth: width });
+    },
+    [sendDeviceUiState]
+  );
+
+  useEffect(() => {
     void refresh();
     const timer = window.setInterval(refresh, 4000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    deviceUiSocketRef.current?.close();
+    deviceUiSocketRef.current = null;
+    setEmbeddedDocUrl(null);
+    if (!selectedDevice) return;
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/devices/${encodeURIComponent(selectedDevice.serial)}/ui`);
+    deviceUiSocketRef.current = socket;
+
+    socket.onmessage = (event) => {
+      const message = parseDeviceUiMessage(event.data);
+      if (!message) return;
+      setEmbeddedDocUrl(message.embeddedDocUrl ?? null);
+      if (message.embeddedDocWidth) setEmbeddedDocWidth(message.embeddedDocWidth);
+    };
+
+    socket.onclose = () => {
+      if (deviceUiSocketRef.current === socket) deviceUiSocketRef.current = null;
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [selectedDevice?.serial]);
 
   const openDevice = async (serial = selectedSerial, restart = false) => {
     if (!serial) return;
@@ -330,6 +472,20 @@ function App() {
       setScreenshotCopied(false);
       setError(t("copyImageFallback"));
       return "downloaded" as const;
+    }
+  };
+
+  const insertScreenshotIntoDoc = async (device: AndroidDevice, screenshot: SavedScreenshot, note?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await insertScreenshotToDiscussionDoc(device.serial, screenshot.id, note);
+      return true;
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : t("errorDiscussionDoc"));
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -614,16 +770,34 @@ function App() {
                 copied={screenshotCopied}
                 t={t}
                 onCopy={() => void copyScreenshot(latestScreenshot)}
+                onInsert={
+                  selectedDevice && selectedDiscussionDoc?.enabled && selectedDiscussionDoc.configured && selectedDiscussionDoc.doc
+                    ? () => insertScreenshotIntoDoc(selectedDevice, latestScreenshot)
+                    : undefined
+                }
               />
             ) : null}
 
-            <div className="focusSurface">
-              <ControlPanel
-                device={selectedDevice}
-                loading={loading}
-                t={t}
-                onError={(message) => setError(message)}
-              />
+            <div className={`focusSurface ${embeddedDocUrl ? "withEmbeddedDoc" : ""}`}>
+              <div className="sidePanelStack">
+                <ControlPanel
+                  device={selectedDevice}
+                  loading={loading}
+                  t={t}
+                  onError={(message) => setError(message)}
+                />
+                {selectedDevice && selectedDiscussionDoc?.enabled ? (
+                  <DiscussionDocPanel
+                    device={selectedDevice}
+                    latestScreenshot={latestScreenshot?.deviceSerial === selectedDevice.serial ? latestScreenshot : null}
+                    status={selectedDiscussionDoc}
+                    t={t}
+                    onStatusChange={setSelectedDiscussionDoc}
+                    onInsertDoc={(screenshot, note) => insertScreenshotIntoDoc(selectedDevice, screenshot, note)}
+                    onOpenInside={openEmbeddedDoc}
+                  />
+                ) : null}
+              </div>
               <MirrorPlayer
                 device={selectedDevice}
                 session={session}
@@ -633,6 +807,16 @@ function App() {
                 annotationMode={annotationMode}
                 clearSignal={clearSignal}
               />
+              {embeddedDocUrl ? (
+                <EmbeddedDocPanel
+                  url={embeddedDocUrl}
+                  width={embeddedDocWidth}
+                  t={t}
+                  onResize={resizeEmbeddedDoc}
+                  onOpenUrl={openEmbeddedDoc}
+                  onClose={closeEmbeddedDoc}
+                />
+              ) : null}
             </div>
           </>
         )}
@@ -650,6 +834,7 @@ function App() {
           onUnpublish={(device) => void unpublishSelectedDevice(device)}
         />
       ) : null}
+
     </main>
   );
 }
@@ -795,17 +980,257 @@ function DeviceManager({
   );
 }
 
+function DiscussionDocPanel({
+  device,
+  latestScreenshot,
+  status,
+  t,
+  onStatusChange,
+  onInsertDoc,
+  onOpenInside
+}: {
+  device: AndroidDevice;
+  latestScreenshot: SavedScreenshot | null;
+  status: DiscussionDocStatus | null;
+  t: (key: MessageKey) => string;
+  onStatusChange: (status: DiscussionDocStatus) => void;
+  onInsertDoc: (screenshot: SavedScreenshot, note?: string) => Promise<boolean>;
+  onOpenInside: (url: string) => void;
+}) {
+  const larkReady = status?.enabled === true && status.configured;
+  const [docUrl, setDocUrl] = useState("");
+  const [docNote, setDocNote] = useState("");
+  const [docBusy, setDocBusy] = useState(false);
+  const [docMessage, setDocMessage] = useState("");
+  const [inserted, setInserted] = useState(false);
+
+  useEffect(() => {
+    setDocUrl(status?.doc?.url ?? "");
+    setDocNote("");
+    setDocMessage("");
+  }, [device.serial, status?.doc?.url]);
+
+  const bindDoc = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!docUrl.trim()) return;
+    setDocBusy(true);
+    setDocMessage("");
+    try {
+      const nextStatus = await bindDiscussionDoc(device.serial, docUrl);
+      onStatusChange(nextStatus);
+      setDocUrl(nextStatus.doc?.url ?? docUrl);
+      setDocMessage(nextStatus.doc?.lastStatus ?? t("bindDoc"));
+    } catch (error) {
+      setDocMessage(error instanceof Error ? error.message : t("errorDiscussionDoc"));
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
+  const createDoc = async () => {
+    setDocBusy(true);
+    setDocMessage("");
+    try {
+      const nextStatus = await createDiscussionDoc(device.serial);
+      onStatusChange(nextStatus);
+      setDocUrl(nextStatus.doc?.url ?? "");
+      setDocMessage(nextStatus.doc?.lastStatus ?? t("createDoc"));
+    } catch (error) {
+      setDocMessage(error instanceof Error ? error.message : t("errorDiscussionDoc"));
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
+  const insertLatest = async () => {
+    if (!latestScreenshot) return;
+    setDocBusy(true);
+    setDocMessage("");
+    const ok = await onInsertDoc(latestScreenshot, docNote);
+    if (ok) {
+      setInserted(true);
+      setDocMessage(t("docInserted"));
+      window.setTimeout(() => setInserted(false), 1600);
+    }
+    setDocBusy(false);
+  };
+
+  return (
+    <section className="discussionDocPanel">
+      <div className="docHeader">
+        <div>
+          <span>
+            <FileText size={14} />
+            {t("discussionDoc")}
+          </span>
+          <strong>{status?.doc?.title ?? t("noDiscussionDoc")}</strong>
+        </div>
+        {status?.doc ? (
+          <div className="docHeaderActions">
+            <button className="docIconLink" type="button" onClick={() => onOpenInside(status.doc?.url ?? docUrl)} title={t("openDocInside")}>
+              <PanelRightOpen size={14} />
+            </button>
+            <a className="docIconLink" href={status.doc.url} target="_blank" rel="noreferrer" title={t("openDoc")}>
+              <ExternalLink size={14} />
+            </a>
+          </div>
+        ) : null}
+      </div>
+
+      {status?.enabled === true && !status.configured ? (
+        <div className="docConfigHint">
+          <strong>{t("discussionDocMissing")}</strong>
+          <span>{t("discussionDocMissingHint")}</span>
+        </div>
+      ) : null}
+
+      <form className="docBindForm compact" onSubmit={bindDoc}>
+        <div className="docBindRow">
+          <Link size={14} />
+          <input
+            value={docUrl}
+            aria-label={t("discussionDocUrl")}
+            onChange={(event) => setDocUrl(event.target.value)}
+            placeholder="https://.../docx/..."
+          />
+          <button className="docSmallButton" type="submit" disabled={docBusy || !docUrl.trim()}>
+            {t("bindDoc")}
+          </button>
+        </div>
+        {larkReady ? (
+          <div className="docCompactActions">
+            <button className="docSmallButton primaryTone" type="button" disabled={docBusy} onClick={() => void createDoc()}>
+              <Plus size={13} />
+              {t("createDoc")}
+            </button>
+          </div>
+        ) : null}
+      </form>
+
+      {larkReady && status?.doc && latestScreenshot ? (
+        <div className="docInsertArea">
+          <textarea value={docNote} onChange={(event) => setDocNote(event.target.value)} placeholder={t("docNotePlaceholder")} />
+          <button className="primary docInsertButton" type="button" disabled={docBusy} onClick={() => void insertLatest()}>
+            {inserted ? <Check size={15} /> : <FileText size={15} />}
+            {inserted ? t("docInserted") : t("insertDoc")}
+          </button>
+        </div>
+      ) : null}
+
+      {docMessage ? <div className="docStatus">{docMessage}</div> : null}
+    </section>
+  );
+}
+
+function EmbeddedDocPanel({
+  url,
+  width,
+  t,
+  onResize,
+  onOpenUrl,
+  onClose
+}: {
+  url: string;
+  width: number;
+  t: (key: MessageKey) => string;
+  onResize: (width: number) => void;
+  onOpenUrl: (url: string) => void;
+  onClose: () => void;
+}) {
+  const [draftUrl, setDraftUrl] = useState(url);
+  const [frameUrl, setFrameUrl] = useState(url);
+
+  useEffect(() => {
+    setDraftUrl(url);
+    setFrameUrl(url);
+  }, [url]);
+
+  const openDraft = (event: React.FormEvent) => {
+    event.preventDefault();
+    const nextUrl = draftUrl.trim();
+    if (!nextUrl) return;
+    setFrameUrl(nextUrl);
+    onOpenUrl(nextUrl);
+  };
+
+  const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = width;
+
+    const move = (moveEvent: PointerEvent) => {
+      onResize(clamp(startWidth - (moveEvent.clientX - startX), 360, 920));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  return (
+    <section className="embeddedDocPanel" aria-label={t("discussionDoc")} style={{ width }}>
+      <button className="embeddedDocResizeHandle" type="button" onPointerDown={startResize} title={t("resizeDocPreview")} aria-label={t("resizeDocPreview")} />
+      <div className="embeddedDocHeader">
+        <div>
+          <span>{t("discussionDoc")}</span>
+        </div>
+        <div className="embeddedDocActions">
+          <a className="iconButton" href={frameUrl} target="_blank" rel="noreferrer" title={t("openDoc")}>
+            <ExternalLink size={16} />
+          </a>
+          <button className="iconButton" type="button" onClick={onClose} title={t("closeDocPreview")}>
+            <X size={17} />
+          </button>
+        </div>
+      </div>
+      <form className="embeddedDocAddressBar" onSubmit={openDraft}>
+        <Link size={15} />
+        <input
+          value={draftUrl}
+          aria-label={t("discussionDocUrl")}
+          onChange={(event) => setDraftUrl(event.target.value)}
+          placeholder="https://.../docx/..."
+        />
+      </form>
+      <p className="embeddedDocHint">{t("docPreviewHint")}</p>
+      <iframe
+        className="embeddedDocFrame"
+        title={t("discussionDoc")}
+        src={frameUrl}
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
+    </section>
+  );
+}
+
 function ScreenshotResult({
   screenshot,
   copied,
   t,
-  onCopy
+  onCopy,
+  onInsert
 }: {
   screenshot: SavedScreenshot;
   copied: boolean;
   t: (key: MessageKey) => string;
   onCopy: () => void;
+  onInsert?: () => Promise<boolean>;
 }) {
+  const [inserted, setInserted] = useState(false);
+
+  const insert = async () => {
+    if (!onInsert) return;
+    const ok = await onInsert();
+    if (!ok) return;
+    setInserted(true);
+    window.setTimeout(() => setInserted(false), 1600);
+  };
+
   return (
     <div className="screenshotResult">
       <span>
@@ -816,6 +1241,12 @@ function ScreenshotResult({
         {copied ? <Check size={15} /> : <Copy size={15} />}
         {copied ? t("copied") : t("copyImage")}
       </button>
+      {onInsert ? (
+        <button className="secondary" type="button" onClick={() => void insert()}>
+          {inserted ? <Check size={15} /> : <FileText size={15} />}
+          {inserted ? t("docInserted") : t("insertDoc")}
+        </button>
+      ) : null}
       <a className="secondary" href={screenshot.downloadUrl} download>
         <Download size={15} />
         {t("download")}
@@ -1123,6 +1554,7 @@ function MirrorPlayer({
   clearSignal: number;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenFrameRef = useRef<HTMLDivElement | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const pointerRef = useRef<{ x: number; y: number; moved: boolean; longPressed: boolean; startedAt: number } | null>(null);
   const wheelLockRef = useRef(false);
@@ -1392,9 +1824,21 @@ function MirrorPlayer({
     void controlDevice(device.serial, action).catch(() => setStatus("error"));
   };
 
+  const openFullscreen = async () => {
+    const target = screenFrameRef.current;
+    if (!target) return;
+    if (target.requestFullscreen) {
+      await target.requestFullscreen().catch(() => undefined);
+      return;
+    }
+
+    const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    video?.webkitEnterFullscreen?.();
+  };
+
   return (
     <section className="stage">
-      <div className="screenFrame" style={screenFrameStyle(device)}>
+      <div className="screenFrame" ref={screenFrameRef} style={screenFrameStyle(device)}>
         <video
           ref={videoRef}
           className="screen"
@@ -1430,6 +1874,10 @@ function MirrorPlayer({
           <span />
           {statusLabel(status, t)}
         </div>
+        <button className="fullscreenButton" type="button" onClick={() => void openFullscreen()} title={t("fullscreenView")}>
+          <Maximize2 size={15} />
+          {t("fullscreenView")}
+        </button>
         {!session ? (
           <div className="standby">
             <MonitorPlay size={34} />
@@ -1810,6 +2258,33 @@ function readInitialLocale(): Locale {
   const saved = window.localStorage.getItem("pura.locale");
   if (saved === "zh" || saved === "en") return saved;
   return window.navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function readEmbeddedDocWidth() {
+  return clamp(Number(window.localStorage.getItem("pura.embeddedDocWidth")) || 620, 360, 920);
+}
+
+function parseDeviceUiMessage(data: unknown) {
+  try {
+    const message = JSON.parse(String(data)) as {
+      type?: string;
+      state?: {
+        embeddedDocUrl?: string | null;
+        embeddedDocWidth?: number;
+      };
+    };
+    if (message.type !== "state") return null;
+    return {
+      embeddedDocUrl: typeof message.state?.embeddedDocUrl === "string" ? message.state.embeddedDocUrl : null,
+      embeddedDocWidth: message.state?.embeddedDocWidth ? clamp(Number(message.state.embeddedDocWidth), 360, 920) : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

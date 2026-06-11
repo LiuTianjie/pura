@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { installAgentRoutes, startAgentControlChannel, startAgentHeartbeat } from "./agent.js";
+import { attachDeviceUiClient } from "./device-ui-state.js";
 import { attachAgentControlClient, attachAgentVideoStream, attachHubVideoClient, installHubRoutes } from "./hub.js";
 import { getLanAddress } from "./network.js";
 import { attachPresenceClient } from "./presence.js";
@@ -59,10 +60,11 @@ server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   const videoMatch = url.pathname.match(/^\/ws\/sessions\/([^/]+)\/video$/);
   const presenceMatch = url.pathname.match(/^\/ws\/presence\/([^/]+)$/);
+  const deviceUiMatch = url.pathname.match(/^\/ws\/devices\/([^/]+)\/ui$/);
   const agentControlMatch = url.pathname.match(/^\/ws\/agents\/([^/]+)\/control$/);
   const agentVideoMatch = url.pathname.match(/^\/ws\/agents\/([^/]+)\/sessions\/([^/]+)\/video$/);
 
-  if (!videoMatch && !presenceMatch && !agentControlMatch && !agentVideoMatch) {
+  if (!videoMatch && !presenceMatch && !deviceUiMatch && !agentControlMatch && !agentVideoMatch) {
     socket.destroy();
     return;
   }
@@ -70,6 +72,8 @@ server.on("upgrade", (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (ws) => {
     if (presenceMatch) {
       attachPresenceClient(decodeURIComponent(presenceMatch[1]), ws);
+    } else if (deviceUiMatch) {
+      attachDeviceUiClient(decodeURIComponent(deviceUiMatch[1]), ws);
     } else if (role === "hub" && agentControlMatch) {
       attachAgentControlClient(decodeURIComponent(agentControlMatch[1]), ws);
     } else if (role === "hub" && agentVideoMatch) {

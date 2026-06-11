@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import type express from "express";
 import { WebSocket } from "ws";
 import { makeDeviceId, parseDeviceId } from "./device-id.js";
-import { listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
+import {
+  bindDiscussionDoc,
+  createDiscussionDoc,
+  getDiscussionDocStatus,
+  insertScreenshotIntoDiscussionDoc
+} from "./discussion-docs.js";
+import { getScreenshot, getScreenshotPath, listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
 import type { AndroidDevice } from "./adb.js";
 import type { DevicePublication } from "./registry.js";
 import type { PublicSession } from "./sessions.js";
@@ -193,6 +199,64 @@ export function installHubRoutes(app: express.Express) {
       res.json({ screenshots: listDeviceScreenshots(req.params.deviceId) });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to list device screenshots" });
+    }
+  });
+
+  app.get("/api/devices/:deviceId/discussion-doc", (req, res) => {
+    try {
+      findDevice(req.params.deviceId);
+      res.json(getDiscussionDocStatus(req.params.deviceId));
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to read discussion document" });
+    }
+  });
+
+  app.put("/api/devices/:deviceId/discussion-doc", async (req, res) => {
+    try {
+      findDevice(req.params.deviceId);
+      const doc = await bindDiscussionDoc(req.params.deviceId, {
+        url: req.body?.url,
+        title: req.body?.title
+      });
+      res.json({ ...getDiscussionDocStatus(req.params.deviceId), doc });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to bind discussion document" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/discussion-doc", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const doc = await createDiscussionDoc({
+        deviceId: req.params.deviceId,
+        deviceName: displayDeviceName(target.device),
+        owner: target.device.publication?.owner,
+        folderToken: req.body?.folderToken
+      });
+      res.json({ ...getDiscussionDocStatus(req.params.deviceId), doc });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to create discussion document" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/screenshots/:screenshotId/discussion-doc", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const screenshot = getScreenshot(req.params.screenshotId, req.params.deviceId);
+      if (!screenshot) {
+        res.status(404).json({ error: "截图不存在，请重新截屏" });
+        return;
+      }
+      const doc = await insertScreenshotIntoDiscussionDoc({
+        deviceId: req.params.deviceId,
+        deviceName: displayDeviceName(target.device),
+        screenshot,
+        screenshotPath: getScreenshotPath(screenshot),
+        note: req.body?.note
+      });
+      res.json({ ...getDiscussionDocStatus(req.params.deviceId), doc });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to insert screenshot into discussion document" });
     }
   });
 
@@ -458,6 +522,10 @@ function listHubSessions() {
       bitrate: process.env.STREAM_BITRATE ?? "8000000"
     }
   }));
+}
+
+function displayDeviceName(device: AgentDevice) {
+  return device.publication?.label || [device.manufacturer, device.model].filter(Boolean).join(" ") || device.serial;
 }
 
 function findDevice(deviceId: string) {

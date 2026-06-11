@@ -7,8 +7,17 @@ services:
       ROLE: hub
       HOST: 0.0.0.0
       PORT: 8787
+      DATA_DIR: /data
+      # Optional Lark/Feishu Docx integration:
+      # PURA_FEATURE_LARK_DOCS: "true"
+      # LARK_APP_ID: ${LARK_APP_ID}
+      # LARK_APP_SECRET: ${LARK_APP_SECRET}
+      # Optional default folder for quick-create:
+      # LARK_DOC_FOLDER_TOKEN: ${LARK_DOC_FOLDER_TOKEN}
     ports:
       - "8787:8787"
+    volumes:
+      - pura-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -16,3 +25,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  pura-data:

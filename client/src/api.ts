@@ -1,4 +1,11 @@
-import type { ControlAction, DevicePublication, DevicesResponse, MirrorSession, SavedScreenshot } from "./types";
+import type {
+  ControlAction,
+  DevicePublication,
+  DevicesResponse,
+  DiscussionDocStatus,
+  MirrorSession,
+  SavedScreenshot
+} from "./types";
 
 export async function fetchDevices(): Promise<DevicesResponse> {
   const response = await fetch("/api/devices");
@@ -97,6 +104,52 @@ export async function fetchDeviceScreenshots(serial: string): Promise<SavedScree
   if (!response.ok) throw new Error(await readError(response));
   const body = await response.json();
   return body.screenshots;
+}
+
+export async function fetchDiscussionDoc(serial: string): Promise<DiscussionDocStatus> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/discussion-doc`);
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function bindDiscussionDoc(serial: string, url: string, title?: string): Promise<DiscussionDocStatus> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/discussion-doc`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ url, title })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function createDiscussionDoc(serial: string, folderToken?: string): Promise<DiscussionDocStatus> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/discussion-doc`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ folderToken })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function insertScreenshotToDiscussionDoc(serial: string, screenshotId: string, note?: string): Promise<DiscussionDocStatus> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots/${encodeURIComponent(screenshotId)}/discussion-doc`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ note })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
 }
 
 export async function publishDevice(serial: string, input: { label: string; owner?: string; note?: string }): Promise<DevicePublication> {

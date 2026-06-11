@@ -49,6 +49,25 @@ export type SavedScreenshot = {
   sizeBytes: number;
 };
 
+export type DiscussionDoc = {
+  deviceId: string;
+  documentId: string;
+  url: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastInsertedAt?: string;
+  lastStatus?: string;
+};
+
+export type DiscussionDocStatus = {
+  enabled: boolean;
+  configured: boolean;
+  missing: string[];
+  defaultFolderToken?: string;
+  doc?: DiscussionDoc;
+};
+
 export type DevicesResponse = {
   devices: AndroidDevice[];
   sessions: MirrorSession[];

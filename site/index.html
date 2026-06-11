@@ -198,10 +198,11 @@
 open http://&lt;hub-lan-ip&gt;:8787</code></pre>
             </div>
             <div class="tab-panel" id="image-panel">
-              <pre><code>PURA_IMAGE=ghcr.io/liutianjie/pura:main docker compose up -d</code></pre>
+              <pre><code>PURA_IMAGE=ghcr.io/liutianjie/pura:main docker compose up -d
+# /data stores screenshots and doc bindings</code></pre>
             </div>
             <div class="tab-panel" id="node-panel">
-              <pre><code>pura-cli hub --host 0.0.0.0 --port 8787</code></pre>
+              <pre><code>DATA_DIR=data-hub pura-cli hub --host 0.0.0.0 --port 8787</code></pre>
             </div>
           </div>
         </div>
@@ -219,6 +220,13 @@ open http://&lt;hub-lan-ip&gt;:8787</code></pre>
           <h3 data-i18n="detail.controlTitle">Coordinate-accurate tap routing.</h3>
           <p data-i18n="detail.controlBody">The Hub receives browser actions and sends them through the Agent's outbound control channel.</p>
           <pre><code>WS /ws/agents/:id/control</code></pre>
+        </article>
+        <article class="detail-card reveal">
+          <span class="detail-kicker" data-i18n="detail.docsKicker">Discussion</span>
+          <h3 data-i18n="detail.docsTitle">Screenshots into Feishu docs.</h3>
+          <p data-i18n="detail.docsBody">Bind or choose one Docx document per device, then append saved screenshots with notes from the Hub UI.</p>
+          <pre><code>PURA_FEATURE_LARK_DOCS=true
+LARK_APP_ID=... LARK_APP_SECRET=...</code></pre>
         </article>
         <article class="detail-card reveal">
           <span class="detail-kicker" data-i18n="detail.safetyKicker">Safety</span>
