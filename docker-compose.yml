@@ -1,6 +1,6 @@
 services:
   pura-hub:
-    image: ${PURA_IMAGE:-ghcr.io/your-org/pura:latest}
+    image: ${PURA_IMAGE:-ghcr.io/liutianjie/pura:main}
     build:
       context: .
     environment:

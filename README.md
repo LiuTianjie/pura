@@ -48,7 +48,7 @@ The GitHub Pages site lives in `site/` and is deployed by `.github/workflows/pag
 After publishing the repository, enable GitHub Pages with GitHub Actions as the source. The public URL will be:
 
 ```text
-https://<owner>.github.io/pura/
+https://liutianjie.github.io/pura/
 ```
 
 ## Requirements
@@ -94,7 +94,7 @@ docker compose up -d
 The included compose file builds the local image by default. To use a published GHCR image:
 
 ```bash
-PURA_IMAGE=ghcr.io/<owner>/pura:latest docker compose up -d
+PURA_IMAGE=ghcr.io/liutianjie/pura:main docker compose up -d
 ```
 
 Equivalent Node.js deployment:
@@ -211,7 +211,7 @@ Release flow:
 1. Update `version` in `package.json`.
 2. Run `npm run check`, `npm run build`, and `npm pack --dry-run`.
 3. Push a tag like `v0.1.0`.
-4. GitHub Actions publishes `pura-cli` to npm and `ghcr.io/<owner>/<repo>` to GHCR.
+4. GitHub Actions publishes `pura-cli` to npm and `ghcr.io/liutianjie/pura` to GHCR.
 
 The release workflow requires an `NPM_TOKEN` repository secret.
 
