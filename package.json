@@ -4,13 +4,13 @@
   "description": "LAN Android device mirroring hub and developer CLI for distributed teams.",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/your-org/pura#readme",
+  "homepage": "https://github.com/LiuTianjie/pura#readme",
   "bugs": {
-    "url": "https://github.com/your-org/pura/issues"
+    "url": "https://github.com/LiuTianjie/pura/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-org/pura.git"
+    "url": "git+https://github.com/LiuTianjie/pura.git"
   },
   "keywords": [
     "android",
