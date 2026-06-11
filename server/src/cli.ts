@@ -13,6 +13,19 @@ const command = args[0];
 const launchAgentLabel = "tech.itool.pura.agent";
 const launchAgentPath = path.join(os.homedir(), "Library", "LaunchAgents", `${launchAgentLabel}.plist`);
 
+type CliDevice = {
+  serial: string;
+  remoteSerial?: string;
+  agentId?: string;
+  publication?: {
+    published: boolean;
+  };
+};
+
+type DevicesPayload = {
+  devices: CliDevice[];
+};
+
 if (!command || command === "--help" || command === "-h") {
   printHelp();
   process.exit(0);
@@ -64,7 +77,7 @@ async function handleConnect() {
   console.log(`agent URL announced to hub: ${publicUrl}`);
 
   if (hasFlag("--background") || hasFlag("--install")) {
-    installLaunchAgent();
+    await installLaunchAgent();
     return;
   }
 
@@ -85,7 +98,7 @@ async function handleConnect() {
 
 async function handleAutoConnect() {
   if (hasFlag("--install")) {
-    installLaunchAgent();
+    await installLaunchAgent();
     return;
   }
 
@@ -137,6 +150,7 @@ async function publishLocalDevice() {
   }
 
   console.log(`Published ${label} (${serial}) to ${config.hubUrl ?? "configured hub"}`);
+  await printPublicationVisibility(config, agentPort, serial);
 }
 
 function startSavedAgent(config: PuraConfig) {
@@ -173,7 +187,7 @@ function startSavedAgent(config: PuraConfig) {
   });
 }
 
-function installLaunchAgent() {
+async function installLaunchAgent() {
   const config = readConfig();
   if (!config.hubUrl) {
     console.error("No saved hub found. Run `pura-cli connect <hub-url> --name <name>` once first.");
@@ -202,6 +216,8 @@ function installLaunchAgent() {
   if (cliPath.includes(`${path.sep}_npx${path.sep}`)) {
     console.warn("This was installed from an npx cache path. For long-term use, install pura-cli globally and run the install command again.");
   }
+
+  await printAgentVisibility(config);
 }
 
 function uninstallLaunchAgent() {
@@ -303,6 +319,113 @@ function startServer(env: NodeJS.ProcessEnv) {
   });
 
   child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+async function printAgentVisibility(config: PuraConfig) {
+  const agentId = config.agentId;
+  const hubUrl = config.hubUrl;
+  const port = config.agentPort ?? "8788";
+
+  if (!agentId || !hubUrl) return;
+
+  const result = await waitForAgentVisibility({ agentId, hubUrl, port });
+  if (result.visible) {
+    console.log(`Agent is online. Local devices: ${result.localDevices?.length ?? 0}. Devices visible on Hub: ${result.hubDevices?.length ?? 0}.`);
+    console.log(`Open ${hubUrl} to publish or control devices.`);
+    return;
+  }
+
+  console.warn("Agent was installed, but the Hub did not report the local device list yet.");
+  if (result.localError) console.warn(`Local Agent check: ${result.localError}`);
+  if (result.hubError) console.warn(`Hub check: ${result.hubError}`);
+  console.warn(`Check logs: tail -f ${path.join(os.homedir(), "Library", "Logs", "pura-agent.err.log")}`);
+}
+
+async function printPublicationVisibility(config: PuraConfig, agentPort: string, serial: string) {
+  if (!config.hubUrl || !config.agentId) {
+    console.warn("Device metadata was saved locally, but no Hub connection is configured.");
+    console.warn("Run `pura-cli connect <hub-ip>:8787 --name <your-name> --background` first.");
+    return;
+  }
+
+  const result = await waitForAgentVisibility({
+    agentId: config.agentId,
+    hubUrl: config.hubUrl,
+    port: agentPort,
+    serial
+  });
+
+  if (result.publishedVisible) {
+    console.log("Hub confirmed this device is visible and published.");
+    return;
+  }
+
+  if (result.deviceVisible) {
+    console.warn("Hub can see this device, but it has not received the published state yet. Refresh the page in a few seconds.");
+    return;
+  }
+
+  console.warn("The device was published locally, but the Hub does not see it yet.");
+  console.warn(`Make sure the Agent is connected: pura-cli connect ${config.hubUrl} --name "${config.agentName ?? "your name"}" --background`);
+}
+
+async function waitForAgentVisibility(options: { agentId: string; hubUrl: string; port: string; serial?: string }) {
+  let localDevices: CliDevice[] | undefined;
+  let hubDevices: CliDevice[] | undefined;
+  let localError = "";
+  let hubError = "";
+
+  for (const delayMs of [250, 500, 750, 1000, 1500, 2500]) {
+    await sleep(delayMs);
+
+    try {
+      localDevices = (await fetchJson<DevicesPayload>(`http://127.0.0.1:${options.port}/api/devices`)).devices;
+      localError = "";
+    } catch (error) {
+      localError = error instanceof Error ? error.message : String(error);
+    }
+
+    try {
+      const allHubDevices = (await fetchJson<DevicesPayload>(`${options.hubUrl}/api/devices`)).devices;
+      hubDevices = allHubDevices.filter((device) => device.agentId === options.agentId);
+      hubError = "";
+    } catch (error) {
+      hubError = error instanceof Error ? error.message : String(error);
+    }
+
+    const deviceVisible = options.serial ? Boolean(hubDevices?.some((device) => device.remoteSerial === options.serial)) : false;
+    const publishedVisible = options.serial
+      ? Boolean(hubDevices?.some((device) => device.remoteSerial === options.serial && device.publication?.published))
+      : false;
+
+    if (publishedVisible || deviceVisible) {
+      return { visible: true, deviceVisible, publishedVisible, localDevices, hubDevices, localError, hubError };
+    }
+
+    if (!options.serial && localDevices && hubDevices && (localDevices.length === 0 || hubDevices.length > 0)) {
+      return { visible: true, deviceVisible, publishedVisible, localDevices, hubDevices, localError, hubError };
+    }
+  }
+
+  const deviceVisible = options.serial ? Boolean(hubDevices?.some((device) => device.remoteSerial === options.serial)) : false;
+  const publishedVisible = options.serial
+    ? Boolean(hubDevices?.some((device) => device.remoteSerial === options.serial && device.publication?.published))
+    : false;
+
+  return { visible: false, deviceVisible, publishedVisible, localDevices, hubDevices, localError, hubError };
+}
+
+async function fetchJson<T>(url: string) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readFlag(name: string) {

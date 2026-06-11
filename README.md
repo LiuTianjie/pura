@@ -20,7 +20,7 @@ Open the Hub:
 http://<hub-lan-ip>:8787
 ```
 
-On each developer machine, connect an Agent:
+On each developer machine, connect an Agent. After this command starts, the Hub page shows every authorized Android device attached to this machine:
 
 ```bash
 npx @nickname4th/pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"
@@ -33,13 +33,7 @@ npm install -g @nickname4th/pura-cli
 pura-cli connect <hub-lan-ip>:8787 --name "Zhang San" --background
 ```
 
-Publish the local Android device:
-
-```bash
-npx @nickname4th/pura-cli connect device --name "Zhang San Pixel 8" --owner "Zhang San" --note "login branch"
-```
-
-Designers can now pick the published machine on the Hub homepage, open the live screen, and click on it with a mouse.
+Open the Hub page, find the device under devices to publish, and publish it from the web UI. Designers can then pick the published machine on the Hub homepage, open the live screen, and click on it with a mouse.
 
 ## Project Site
 
@@ -105,13 +99,13 @@ pura-cli hub --host 0.0.0.0 --port 8787
 
 ## Developer Agent
 
-Each developer connects their local Agent to the Hub:
+Each developer connects their local Agent to the Hub. Once connected, the Hub web UI lists all authorized local Android devices, including devices that are not published yet:
 
 ```bash
 pura-cli connect 192.168.100.128:8787 --name "Zhang San"
 ```
 
-The Agent listens on `8788` by default and continuously reports local ADB devices to the Hub.
+The Agent listens on `8788` by default and continuously reports local ADB devices to the Hub. Use the web UI to publish, rename, unpublish, and manage devices.
 
 If the Hub cannot reach the auto-detected Agent URL, specify it:
 
@@ -140,7 +134,15 @@ Connect a phone over USB and confirm it is authorized:
 adb devices -l
 ```
 
-Then publish it:
+Then run or install the Agent:
+
+```bash
+pura-cli connect 192.168.100.128:8787 --name "Zhang San" --background
+```
+
+Open the Hub page and publish the device from the web UI.
+
+The CLI also has a shortcut for scripts:
 
 ```bash
 pura-cli connect device --name "Zhang San Pixel 8" --owner "Zhang San" --note "login branch"
