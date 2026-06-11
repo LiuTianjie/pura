@@ -196,8 +196,8 @@ Agent:
 - `AGENT_NAME`
 - `PUBLIC_URL=http://<agent-ip>:8788`
 - `ADB_PATH=adb`
-- `STREAM_SIZE=1280x720`
-- `STREAM_BITRATE=1500000`
+- `STREAM_SIZE` optional; unset uses native device resolution
+- `STREAM_BITRATE=8000000`
 - `STREAM_TIME_LIMIT_SECONDS=180`
 - `INCLUDE_TCP_DEVICES=true`
 - `DATA_DIR=data-agent`

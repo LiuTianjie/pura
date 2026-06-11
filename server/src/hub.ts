@@ -223,7 +223,7 @@ function listHubSessions() {
       codec: "h264",
       container: "annexb",
       size: process.env.STREAM_SIZE ?? "native",
-      bitrate: process.env.STREAM_BITRATE ?? "1500000"
+      bitrate: process.env.STREAM_BITRATE ?? "8000000"
     }
   }));
 }

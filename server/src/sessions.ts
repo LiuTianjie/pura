@@ -19,7 +19,7 @@ const sessions = new Map<string, MirrorSession>();
 const sessionsBySerial = new Map<string, string>();
 
 const STREAM_SIZE = process.env.STREAM_SIZE;
-const STREAM_BITRATE = process.env.STREAM_BITRATE ?? "1500000";
+const STREAM_BITRATE = process.env.STREAM_BITRATE ?? "8000000";
 const STREAM_TIME_LIMIT_SECONDS = process.env.STREAM_TIME_LIMIT_SECONDS ?? "180";
 
 export type PublicSession = {
