@@ -5,6 +5,7 @@ node: home-mac-mini
 exposure: tailscale-relay
 domain: pura.itool.tech
 port: 8787
+publishPort: 18787
 replicas: 1
 env:
   ROLE: hub
