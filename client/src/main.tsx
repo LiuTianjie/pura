@@ -68,6 +68,7 @@ const messages = {
     annotationRect: "Box",
     clearCanvas: "Clear canvas",
     copied: "Copied",
+    copyImageFallback: "Image copy is unavailable here, downloaded instead",
     copyImage: "Copy image",
     cursorName: "Your name",
     cursorsOff: "Cursors off",
@@ -149,6 +150,7 @@ const messages = {
     annotationRect: "框选",
     clearCanvas: "清除画布",
     copied: "已复制",
+    copyImageFallback: "当前浏览器不支持复制图片，已改为下载",
     copyImage: "复制图片",
     cursorName: "你的名字",
     cursorsOff: "光标关",
@@ -322,8 +324,12 @@ function App() {
       await copyScreenshotImage(screenshot);
       setScreenshotCopied(true);
       window.setTimeout(() => setScreenshotCopied(false), 1600);
+      return "copied" as const;
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : t("errorScreenshot"));
+      downloadSavedScreenshot(screenshot);
+      setScreenshotCopied(false);
+      setError(t("copyImageFallback"));
+      return "downloaded" as const;
     }
   };
 
@@ -651,7 +657,7 @@ function DeviceManager({
   t: (key: MessageKey) => string;
   onClose: () => void;
   onCapture: (device: AndroidDevice) => Promise<SavedScreenshot | undefined>;
-  onCopy: (screenshot: SavedScreenshot) => Promise<void>;
+  onCopy: (screenshot: SavedScreenshot) => Promise<"copied" | "downloaded">;
   onPublish: (device: AndroidDevice, input: { label: string; owner?: string; note?: string }) => void;
   onUnpublish: (device: AndroidDevice) => void;
 }) {
@@ -686,9 +692,11 @@ function DeviceManager({
   };
 
   const copy = async (screenshot: SavedScreenshot) => {
-    await onCopy(screenshot);
-    setCopiedScreenshotId(screenshot.id);
-    window.setTimeout(() => setCopiedScreenshotId(null), 1600);
+    const result = await onCopy(screenshot);
+    if (result === "copied") {
+      setCopiedScreenshotId(screenshot.id);
+      window.setTimeout(() => setCopiedScreenshotId(null), 1600);
+    }
   };
 
   return (
@@ -1551,6 +1559,15 @@ async function copyScreenshotImage(screenshot: SavedScreenshot) {
       [blob.type || "image/png"]: blob
     })
   ]);
+}
+
+function downloadSavedScreenshot(screenshot: SavedScreenshot) {
+  const link = document.createElement("a");
+  link.href = screenshot.downloadUrl;
+  link.download = screenshot.fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function createDraftAnnotation(
