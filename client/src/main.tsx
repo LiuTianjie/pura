@@ -5,6 +5,7 @@ import {
   Cable,
   Circle,
   FileText,
+  Languages,
   MonitorPlay,
   MousePointer2,
   PencilLine,
@@ -21,6 +22,99 @@ import type { AndroidDevice, DevicesResponse, MirrorSession } from "./types";
 import "./styles.css";
 
 type PlayerStatus = "idle" | "connecting" | "live" | "error";
+type Locale = "en" | "zh";
+type ViewMode = "grid" | "focus";
+
+const messages = {
+  en: {
+    appTitle: "Mirror Deck",
+    appSubtitle: "LAN Android lab",
+    refresh: "Refresh",
+    publishedMachines: "Published machines",
+    noMachinesPublished: "No machines published",
+    devicesToPublish: "Devices to publish",
+    allDevicesPublished: "All devices are published",
+    usbHostViewer: "USB host viewer",
+    waitingForDevice: "Waiting for device",
+    stop: "Stop",
+    starting: "Starting",
+    restartView: "Restart view",
+    openView: "Open view",
+    unknownSize: "Unknown size",
+    clickToTap: "Click to tap",
+    deviceName: "Device name",
+    developer: "Developer",
+    owner: "Owner",
+    note: "Note",
+    notePlaceholder: "Build, branch, scenario",
+    unpublish: "Unpublish",
+    updateInfo: "Update info",
+    publish: "Publish",
+    standbyTitle: "Select a device and open view",
+    statusConnecting: "Connecting",
+    statusLive: "Live",
+    statusError: "Stream error",
+    statusIdle: "Idle",
+    errorRefresh: "Unable to refresh devices",
+    errorStart: "Unable to start session",
+    errorPublish: "Unable to publish device",
+    errorUnpublish: "Unable to unpublish device",
+    gridView: "Grid",
+    focusView: "Focus",
+    phoneGrid: "Phone grid",
+    phoneGridEyebrow: "Device wall",
+    phoneCount: "phones online",
+    openDevice: "Open device",
+    preview: "Preview",
+    noDevicesOnline: "No devices online",
+    languageToggle: "中文"
+  },
+  zh: {
+    appTitle: "镜像控制台",
+    appSubtitle: "局域网 Android 设备墙",
+    refresh: "刷新",
+    publishedMachines: "已发布设备",
+    noMachinesPublished: "暂无已发布设备",
+    devicesToPublish: "待发布设备",
+    allDevicesPublished: "所有设备已发布",
+    usbHostViewer: "USB 主机预览",
+    waitingForDevice: "等待设备上线",
+    stop: "停止",
+    starting: "启动中",
+    restartView: "重启画面",
+    openView: "打开画面",
+    unknownSize: "未知尺寸",
+    clickToTap: "点击即触控",
+    deviceName: "设备名称",
+    developer: "研发",
+    owner: "负责人",
+    note: "备注",
+    notePlaceholder: "构建、分支、场景",
+    unpublish: "取消发布",
+    updateInfo: "更新信息",
+    publish: "发布",
+    standbyTitle: "选择设备并打开画面",
+    statusConnecting: "连接中",
+    statusLive: "直播中",
+    statusError: "流异常",
+    statusIdle: "空闲",
+    errorRefresh: "无法刷新设备",
+    errorStart: "无法启动会话",
+    errorPublish: "无法发布设备",
+    errorUnpublish: "无法取消发布设备",
+    gridView: "网格",
+    focusView: "控制",
+    phoneGrid: "手机网格",
+    phoneGridEyebrow: "设备墙",
+    phoneCount: "台设备在线",
+    openDevice: "进入设备",
+    preview: "预览",
+    noDevicesOnline: "暂无在线设备",
+    languageToggle: "EN"
+  }
+} as const;
+
+type MessageKey = keyof typeof messages.en;
 
 function App() {
   const [data, setData] = useState<DevicesResponse>({ devices: [], sessions: [] });
@@ -29,6 +123,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publishForm, setPublishForm] = useState({ label: "", owner: "", note: "" });
+  const [locale, setLocale] = useState<Locale>(readInitialLocale);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const t = useCallback((key: MessageKey) => messages[locale][key], [locale]);
 
   const selectedDevice = useMemo(
     () => data.devices.find((device) => device.serial === selectedSerial) ?? null,
@@ -56,9 +153,14 @@ function App() {
         setSelectedSerial(firstReady.serial);
       }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to refresh devices");
+      setError(nextError instanceof Error ? nextError.message : t("errorRefresh"));
     }
-  }, [selectedSerial]);
+  }, [selectedSerial, t]);
+
+  useEffect(() => {
+    window.localStorage.setItem("pura.locale", locale);
+    document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  }, [locale]);
 
   useEffect(() => {
     void refresh();
@@ -75,15 +177,16 @@ function App() {
     });
   }, [selectedDevice?.serial]);
 
-  const openSelectedDevice = async () => {
-    if (!selectedSerial) return;
+  const openDevice = async (serial = selectedSerial) => {
+    if (!serial) return;
     setLoading(true);
     setError(null);
     try {
-      const next = await startSession(selectedSerial);
+      const next = await startSession(serial);
       setSession(next);
+      setViewMode("focus");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to start session");
+      setError(nextError instanceof Error ? nextError.message : t("errorStart"));
     } finally {
       setLoading(false);
     }
@@ -105,6 +208,14 @@ function App() {
     });
   };
 
+  const enterDevice = async (device: AndroidDevice) => {
+    selectDevice(device);
+    setViewMode("focus");
+    if (device.state === "device") {
+      await openDevice(device.serial);
+    }
+  };
+
   const publishSelectedDevice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedDevice) return;
@@ -115,7 +226,7 @@ function App() {
       await publishDevice(selectedDevice.serial, publishForm);
       await refresh();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to publish device");
+      setError(nextError instanceof Error ? nextError.message : t("errorPublish"));
     } finally {
       setLoading(false);
     }
@@ -130,7 +241,7 @@ function App() {
       await unpublishDevice(selectedDevice.serial);
       await refresh();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to unpublish device");
+      setError(nextError instanceof Error ? nextError.message : t("errorUnpublish"));
     } finally {
       setLoading(false);
     }
@@ -144,25 +255,31 @@ function App() {
             <MonitorPlay size={19} />
           </span>
           <div>
-            <h1>Mirror Deck</h1>
-            <p>LAN Android lab</p>
+            <h1>{t("appTitle")}</h1>
+            <p>{t("appSubtitle")}</p>
           </div>
         </div>
 
-        <button className="refreshButton" onClick={() => void refresh()}>
-          <RefreshCw size={16} />
-          Refresh
-        </button>
+        <div className="railControls">
+          <button className="refreshButton" onClick={() => void refresh()}>
+            <RefreshCw size={16} />
+            {t("refresh")}
+          </button>
+          <button className="languageButton" onClick={() => setLocale((current) => (current === "en" ? "zh" : "en"))}>
+            <Languages size={15} />
+            {t("languageToggle")}
+          </button>
+        </div>
 
-        <section className="deviceList" aria-label="Published Android devices">
+        <section className="deviceList" aria-label={t("publishedMachines")}>
           <div className="sectionLabel">
             <Radio size={14} />
-            Published machines
+            {t("publishedMachines")}
           </div>
           {publishedDevices.length === 0 ? (
             <div className="emptyState">
               <MonitorPlay size={22} />
-              <span>No machines published</span>
+              <span>{t("noMachinesPublished")}</span>
             </div>
           ) : (
             publishedDevices.map((device) => (
@@ -182,15 +299,15 @@ function App() {
           )}
         </section>
 
-        <section className="deviceList compact" aria-label="Local USB devices">
+        <section className="deviceList compact" aria-label={t("devicesToPublish")}>
           <div className="sectionLabel">
             <Usb size={14} />
-            Devices to publish
+            {t("devicesToPublish")}
           </div>
           {localDevices.length === 0 ? (
             <div className="emptyState small">
               <Usb size={18} />
-              <span>All devices are published</span>
+              <span>{t("allDevicesPublished")}</span>
             </div>
           ) : (
             localDevices.map((device) => (
@@ -214,89 +331,171 @@ function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">USB host viewer</p>
-            <h2>{selectedDevice ? displayName(selectedDevice) : "Waiting for device"}</h2>
+            <p className="eyebrow">{viewMode === "grid" ? t("phoneGridEyebrow") : t("usbHostViewer")}</p>
+            <h2>{viewMode === "grid" ? t("phoneGrid") : selectedDevice ? displayName(selectedDevice) : t("waitingForDevice")}</h2>
+          </div>
+          <div className="viewTabs" role="tablist" aria-label="Console view">
+            <button className={viewMode === "grid" ? "active" : ""} type="button" onClick={() => setViewMode("grid")}>
+              {t("gridView")}
+            </button>
+            <button className={viewMode === "focus" ? "active" : ""} type="button" onClick={() => setViewMode("focus")}>
+              {t("focusView")}
+            </button>
           </div>
           <div className="actions">
             <button className="secondary" onClick={() => void stopCurrentSession()} disabled={!session}>
               <Power size={16} />
-              Stop
+              {t("stop")}
             </button>
-            <button className="primary" onClick={() => void openSelectedDevice()} disabled={!selectedSerial || loading}>
+            <button className="primary" onClick={() => void openDevice()} disabled={!selectedSerial || loading}>
               <MonitorPlay size={17} />
-              {loading ? "Starting" : session ? "Restart view" : "Open view"}
+              {loading ? t("starting") : session ? t("restartView") : t("openView")}
             </button>
           </div>
         </header>
 
-        <div className="metaStrip">
-          <InfoPill icon={<Cable size={15} />} label={selectedDevice?.transport.toUpperCase() ?? "USB"} />
-          <InfoPill
-            icon={<Smartphone size={15} />}
-            label={selectedDevice?.size ? `${selectedDevice.size.width}x${selectedDevice.size.height}` : "Unknown size"}
-          />
-          <InfoPill icon={<Circle size={13} />} label={selectedDevice?.state ?? "offline"} />
-          <InfoPill icon={<MousePointer2 size={15} />} label="Click to tap" />
-          {selectedDevice?.agentName ? <InfoPill icon={<Radio size={15} />} label={selectedDevice.agentName} /> : null}
-          {selectedDevice?.publication?.owner ? <InfoPill icon={<UserRound size={15} />} label={selectedDevice.publication.owner} /> : null}
-        </div>
-
         {error ? <div className="errorBanner">{error}</div> : null}
 
-        {selectedDevice ? (
-          <form className="publishPanel" onSubmit={(event) => void publishSelectedDevice(event)}>
-            <label>
-              <span>
-                <PencilLine size={14} />
-                Device name
-              </span>
-              <input
-                value={publishForm.label}
-                onChange={(event) => setPublishForm((current) => ({ ...current, label: event.target.value }))}
-                placeholder={formatDeviceName(selectedDevice)}
+        {viewMode === "grid" ? (
+          <DeviceGrid devices={data.devices} selectedSerial={selectedSerial} session={session} t={t} onOpen={(device) => void enterDevice(device)} />
+        ) : (
+          <>
+            <div className="metaStrip">
+              <InfoPill icon={<Cable size={15} />} label={selectedDevice?.transport.toUpperCase() ?? "USB"} />
+              <InfoPill
+                icon={<Smartphone size={15} />}
+                label={selectedDevice?.size ? `${selectedDevice.size.width}x${selectedDevice.size.height}` : t("unknownSize")}
               />
-            </label>
-            <label>
-              <span>
-                <UserRound size={14} />
-                Developer
-              </span>
-              <input
-                value={publishForm.owner}
-                onChange={(event) => setPublishForm((current) => ({ ...current, owner: event.target.value }))}
-                placeholder="Owner"
-              />
-            </label>
-            <label>
-              <span>
-                <FileText size={14} />
-                Note
-              </span>
-              <input
-                value={publishForm.note}
-                onChange={(event) => setPublishForm((current) => ({ ...current, note: event.target.value }))}
-                placeholder="Build, branch, scenario"
-              />
-            </label>
-            <div className="publishActions">
-              <button className="secondary" type="button" onClick={() => void unpublishSelectedDevice()} disabled={loading || !selectedDevice.publication?.published}>
-                Unpublish
-              </button>
-              <button className="primary" type="submit" disabled={loading || selectedDevice.state !== "device"}>
-                <Send size={16} />
-                {selectedDevice.publication?.published ? "Update info" : "Publish"}
-              </button>
+              <InfoPill icon={<Circle size={13} />} label={selectedDevice?.state ?? "offline"} />
+              <InfoPill icon={<MousePointer2 size={15} />} label={t("clickToTap")} />
+              {selectedDevice?.agentName ? <InfoPill icon={<Radio size={15} />} label={selectedDevice.agentName} /> : null}
+              {selectedDevice?.publication?.owner ? <InfoPill icon={<UserRound size={15} />} label={selectedDevice.publication.owner} /> : null}
             </div>
-          </form>
-        ) : null}
 
-        <MirrorPlayer device={selectedDevice} session={session} />
+            {selectedDevice ? (
+              <form className="publishPanel" onSubmit={(event) => void publishSelectedDevice(event)}>
+                <label>
+                  <span>
+                    <PencilLine size={14} />
+                    {t("deviceName")}
+                  </span>
+                  <input
+                    value={publishForm.label}
+                    onChange={(event) => setPublishForm((current) => ({ ...current, label: event.target.value }))}
+                    placeholder={formatDeviceName(selectedDevice)}
+                  />
+                </label>
+                <label>
+                  <span>
+                    <UserRound size={14} />
+                    {t("developer")}
+                  </span>
+                  <input
+                    value={publishForm.owner}
+                    onChange={(event) => setPublishForm((current) => ({ ...current, owner: event.target.value }))}
+                    placeholder={t("owner")}
+                  />
+                </label>
+                <label>
+                  <span>
+                    <FileText size={14} />
+                    {t("note")}
+                  </span>
+                  <input
+                    value={publishForm.note}
+                    onChange={(event) => setPublishForm((current) => ({ ...current, note: event.target.value }))}
+                    placeholder={t("notePlaceholder")}
+                  />
+                </label>
+                <div className="publishActions">
+                  <button className="secondary" type="button" onClick={() => void unpublishSelectedDevice()} disabled={loading || !selectedDevice.publication?.published}>
+                    {t("unpublish")}
+                  </button>
+                  <button className="primary" type="submit" disabled={loading || selectedDevice.state !== "device"}>
+                    <Send size={16} />
+                    {selectedDevice.publication?.published ? t("updateInfo") : t("publish")}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
+            <MirrorPlayer device={selectedDevice} session={session} t={t} />
+          </>
+        )}
       </section>
     </main>
   );
 }
 
-function MirrorPlayer({ device, session }: { device: AndroidDevice | null; session: MirrorSession | null }) {
+function DeviceGrid({
+  devices,
+  selectedSerial,
+  session,
+  t,
+  onOpen
+}: {
+  devices: AndroidDevice[];
+  selectedSerial: string | null;
+  session: MirrorSession | null;
+  t: (key: MessageKey) => string;
+  onOpen: (device: AndroidDevice) => void;
+}) {
+  if (devices.length === 0) {
+    return (
+      <section className="phoneGrid empty">
+        <div className="emptyState">
+          <Smartphone size={28} />
+          <span>{t("noDevicesOnline")}</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="phoneGrid" aria-label={t("phoneGrid")}>
+      <div className="gridSummary">
+        <strong>{devices.length}</strong>
+        <span>{t("phoneCount")}</span>
+      </div>
+      <div className="phoneCards">
+        {devices.map((device) => (
+          <button
+            className={`phoneCard ${device.serial === selectedSerial ? "selected" : ""}`}
+            key={device.serial}
+            type="button"
+            onClick={() => onOpen(device)}
+          >
+            <div className="phonePreview" aria-label={t("preview")}>
+              <div className="phoneChrome" style={{ aspectRatio: deviceAspectRatio(device) }}>
+                <span className="speaker" />
+                <div className="previewScreen">
+                  <span className={`previewSignal ${device.state}`} />
+                  <Smartphone size={34} />
+                  <small>{device.size ? `${device.size.width}x${device.size.height}` : t("unknownSize")}</small>
+                </div>
+              </div>
+              {session?.serial === device.serial ? <span className="liveTag">{t("statusLive")}</span> : null}
+            </div>
+            <div className="phoneMeta">
+              <strong>{displayName(device)}</strong>
+              <span>{device.agentName ?? device.agentId ?? device.serial}</span>
+              {device.publication?.note ? <small>{device.publication.note}</small> : null}
+            </div>
+            <div className="phoneFooter">
+              <span>
+                <StatusDot state={device.state} />
+                {device.state}
+              </span>
+              <span>{t("openDevice")}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MirrorPlayer({ device, session, t }: { device: AndroidDevice | null; session: MirrorSession | null; t: (key: MessageKey) => string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [tapPulse, setTapPulse] = useState<{ x: number; y: number; id: number } | null>(null);
@@ -356,12 +555,12 @@ function MirrorPlayer({ device, session }: { device: AndroidDevice | null; sessi
         {tapPulse ? <span className="tapPulse" key={tapPulse.id} style={{ left: tapPulse.x, top: tapPulse.y }} /> : null}
         <div className={`statusBadge ${status}`}>
           <span />
-          {statusLabel(status)}
+          {statusLabel(status, t)}
         </div>
         {!session ? (
           <div className="standby">
             <MonitorPlay size={34} />
-            <strong>Select a device and open view</strong>
+            <strong>{t("standbyTitle")}</strong>
           </div>
         ) : null}
       </div>
@@ -424,11 +623,22 @@ function displayName(device: AndroidDevice) {
   return device.publication?.label || formatDeviceName(device);
 }
 
-function statusLabel(status: PlayerStatus) {
-  if (status === "connecting") return "Connecting";
-  if (status === "live") return "Live";
-  if (status === "error") return "Stream error";
-  return "Idle";
+function deviceAspectRatio(device: AndroidDevice) {
+  if (!device.size) return "9 / 16";
+  return `${device.size.width} / ${device.size.height}`;
+}
+
+function statusLabel(status: PlayerStatus, t: (key: MessageKey) => string) {
+  if (status === "connecting") return t("statusConnecting");
+  if (status === "live") return t("statusLive");
+  if (status === "error") return t("statusError");
+  return t("statusIdle");
+}
+
+function readInitialLocale(): Locale {
+  const saved = window.localStorage.getItem("pura.locale");
+  if (saved === "zh" || saved === "en") return saved;
+  return window.navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

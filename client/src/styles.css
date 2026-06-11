@@ -15,6 +15,8 @@
   --steel: #7bb4d6;
   --button: #d6ff59;
   --button-text: #15190f;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
 }
 
 * {
@@ -49,6 +51,7 @@ button {
   padding: 22px;
   background: rgba(18, 21, 18, 0.94);
   border-right: 1px solid var(--line);
+  animation: panelIn 520ms var(--ease-emphasized) both;
 }
 
 .brand {
@@ -56,6 +59,7 @@ button {
   align-items: center;
   gap: 12px;
   min-width: 0;
+  animation: riseIn 480ms var(--ease-emphasized) both;
 }
 
 .brandMark {
@@ -89,6 +93,7 @@ button {
 }
 
 .refreshButton,
+.languageButton,
 .deviceItem,
 .primary,
 .secondary {
@@ -100,11 +105,55 @@ button {
   border: 1px solid var(--line);
   border-radius: 7px;
   cursor: pointer;
+  transition:
+    transform 160ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    opacity 180ms var(--ease-out);
 }
 
-.refreshButton {
+.railControls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  animation: riseIn 520ms var(--ease-emphasized) 80ms both;
+}
+
+.refreshButton,
+.languageButton {
   color: var(--text);
   background: #1d211d;
+}
+
+.languageButton {
+  min-width: 74px;
+  padding: 0 12px;
+}
+
+.refreshButton:hover,
+.languageButton:hover,
+.secondary:hover:not(:disabled) {
+  border-color: #617057;
+  background: #242a24;
+  transform: translateY(-1px);
+}
+
+.refreshButton:hover svg {
+  animation: spinOnce 620ms var(--ease-emphasized);
+}
+
+.primary:hover:not(:disabled) {
+  box-shadow: 0 10px 28px rgba(214, 255, 89, 0.2);
+  transform: translateY(-1px);
+}
+
+.refreshButton:active,
+.languageButton:active,
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled),
+.deviceItem:active {
+  transform: translateY(0) scale(0.985);
 }
 
 .deviceList {
@@ -113,6 +162,7 @@ button {
   gap: 9px;
   min-height: 0;
   overflow: auto;
+  animation: riseIn 520ms var(--ease-emphasized) 130ms both;
 }
 
 .deviceList.compact {
@@ -136,12 +186,18 @@ button {
   color: var(--text);
   background: #171b17;
   text-align: left;
+  animation: listItemIn 360ms var(--ease-emphasized) both;
 }
 
 .deviceItem:hover,
 .deviceItem.selected {
   border-color: #5f7258;
   background: #202720;
+  transform: translateX(3px);
+}
+
+.deviceItem.selected {
+  box-shadow: inset 3px 0 0 var(--button), 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .deviceItem.published {
@@ -177,10 +233,13 @@ button {
   margin-left: auto;
   border-radius: 50%;
   background: var(--red);
+  transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
 }
 
 .dot.device {
   background: var(--green);
+  box-shadow: 0 0 0 rgba(157, 255, 116, 0);
+  animation: onlinePulse 2200ms ease-in-out infinite;
 }
 
 .dot.unauthorized {
@@ -195,6 +254,7 @@ button {
   color: var(--muted);
   border: 1px dashed var(--line);
   border-radius: 7px;
+  animation: fadeIn 420ms var(--ease-out) both;
 }
 
 .emptyState.small {
@@ -207,6 +267,7 @@ button {
   flex-direction: column;
   min-width: 0;
   padding: 22px;
+  animation: workspaceIn 560ms var(--ease-emphasized) 70ms both;
 }
 
 .topbar {
@@ -215,6 +276,7 @@ button {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  animation: riseIn 520ms var(--ease-emphasized) 120ms both;
 }
 
 .eyebrow {
@@ -233,6 +295,37 @@ button {
 .actions {
   display: flex;
   gap: 10px;
+}
+
+.viewTabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(17, 20, 17, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  animation: riseIn 520ms var(--ease-emphasized) 150ms both;
+}
+
+.viewTabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.viewTabs button:hover {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.viewTabs button.active {
+  color: var(--button-text);
+  background: var(--button);
 }
 
 .primary,
@@ -277,6 +370,13 @@ button {
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 12px;
+  animation: chipIn 360ms var(--ease-emphasized) both;
+  transition: border-color 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+
+.infoPill:hover {
+  border-color: #586355;
+  transform: translateY(-1px);
 }
 
 .errorBanner {
@@ -286,6 +386,205 @@ button {
   background: rgba(255, 107, 98, 0.16);
   border: 1px solid rgba(255, 107, 98, 0.45);
   border-radius: 7px;
+  animation: errorIn 340ms var(--ease-out) both;
+}
+
+.phoneGrid {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  animation: riseIn 560ms var(--ease-emphasized) 180ms both;
+}
+
+.phoneGrid.empty {
+  place-items: center;
+  min-height: 420px;
+}
+
+.gridSummary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  width: fit-content;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gridSummary strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.phoneCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.phoneCard {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  color: var(--text);
+  background: rgba(23, 27, 23, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  animation: listItemIn 420ms var(--ease-emphasized) both;
+  transition:
+    transform 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out);
+}
+
+.phoneCard:hover,
+.phoneCard.selected {
+  border-color: rgba(214, 255, 89, 0.58);
+  background: rgba(31, 38, 30, 0.94);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  transform: translateY(-3px);
+}
+
+.phonePreview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 230px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(214, 255, 89, 0.1), transparent 34%),
+    #0b0d0b;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.phoneChrome {
+  position: relative;
+  display: grid;
+  width: min(58%, 150px);
+  min-width: 92px;
+  max-height: 250px;
+  padding: 10px 7px 9px;
+  background: linear-gradient(180deg, #222822, #0b0d0b);
+  border: 1px solid #3d463a;
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.38);
+  transition: transform 240ms var(--ease-out), box-shadow 240ms var(--ease-out);
+}
+
+.phoneCard:hover .phoneChrome {
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.48);
+  transform: translateY(-2px) scale(1.015);
+}
+
+.speaker {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 30%;
+  height: 3px;
+  background: #4b5447;
+  border-radius: 99px;
+  transform: translateX(-50%);
+}
+
+.previewScreen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 0;
+  color: #b9c6b5;
+  background:
+    linear-gradient(160deg, rgba(123, 180, 214, 0.16), transparent 42%),
+    linear-gradient(20deg, rgba(214, 255, 89, 0.1), transparent 48%),
+    #111511;
+  border: 1px solid #30382e;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.previewScreen small {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.previewSignal {
+  position: absolute;
+  right: 9px;
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  border-radius: 50%;
+}
+
+.previewSignal.device {
+  background: var(--green);
+  animation: onlinePulse 2200ms ease-in-out infinite;
+}
+
+.previewSignal.unauthorized {
+  background: var(--amber);
+}
+
+.liveTag {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  min-height: 24px;
+  padding: 4px 8px;
+  color: var(--button-text);
+  background: var(--button);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.phoneMeta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.phoneMeta strong,
+.phoneMeta span,
+.phoneMeta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phoneMeta strong {
+  font-size: 15px;
+}
+
+.phoneMeta span,
+.phoneMeta small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.phoneFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #cbd4c8;
+  font-size: 12px;
+}
+
+.phoneFooter span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
 
 .publishPanel {
@@ -298,6 +597,7 @@ button {
   background: rgba(23, 26, 24, 0.82);
   border: 1px solid var(--line);
   border-radius: 8px;
+  animation: riseIn 520ms var(--ease-emphasized) 180ms both;
 }
 
 .publishPanel label {
@@ -324,11 +624,13 @@ button {
   border: 1px solid #394037;
   border-radius: 7px;
   outline: none;
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), background-color 160ms var(--ease-out);
 }
 
 .publishPanel input:focus {
   border-color: #d6ff59;
   box-shadow: 0 0 0 2px rgba(214, 255, 89, 0.14);
+  background: #151a14;
 }
 
 .publishActions {
@@ -341,6 +643,7 @@ button {
   min-height: 0;
   display: grid;
   place-items: center;
+  animation: riseIn 560ms var(--ease-emphasized) 240ms both;
 }
 
 .screenFrame {
@@ -354,6 +657,13 @@ button {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 24px 90px rgba(0, 0, 0, 0.42);
+  transition: border-color 260ms var(--ease-out), box-shadow 260ms var(--ease-out), transform 260ms var(--ease-out);
+}
+
+.screenFrame:hover {
+  border-color: #46513f;
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.48);
+  transform: translateY(-1px);
 }
 
 .screen {
@@ -380,6 +690,7 @@ button {
   border-radius: 999px;
   font-size: 12px;
   backdrop-filter: blur(10px);
+  animation: badgeIn 260ms var(--ease-emphasized) both;
 }
 
 .statusBadge span {
@@ -396,6 +707,7 @@ button {
 
 .statusBadge.connecting span {
   background: var(--amber);
+  animation: connectingPulse 880ms ease-in-out infinite;
 }
 
 .statusBadge.error span {
@@ -413,6 +725,7 @@ button {
   background:
     linear-gradient(135deg, rgba(214, 255, 89, 0.06), transparent 40%),
     rgba(5, 6, 5, 0.92);
+  animation: fadeIn 420ms var(--ease-out) both;
 }
 
 .tapPulse {
@@ -423,7 +736,140 @@ button {
   pointer-events: none;
   border: 2px solid var(--button);
   border-radius: 50%;
-  animation: pulse 520ms ease-out forwards;
+  animation: pulse 520ms var(--ease-emphasized) forwards;
+}
+
+.deviceItem:nth-of-type(2) {
+  animation-delay: 45ms;
+}
+
+.deviceItem:nth-of-type(3) {
+  animation-delay: 90ms;
+}
+
+.deviceItem:nth-of-type(4) {
+  animation-delay: 135ms;
+}
+
+.deviceItem:nth-of-type(5) {
+  animation-delay: 180ms;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes workspaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes listItemIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes chipIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes badgeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes errorIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  65% {
+    transform: translateX(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spinOnce {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes onlinePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(157, 255, 116, 0);
+  }
+  45% {
+    box-shadow: 0 0 16px rgba(157, 255, 116, 0.52);
+  }
+}
+
+@keyframes connectingPulse {
+  0%,
+  100% {
+    transform: scale(0.82);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
 }
 
 @keyframes pulse {
@@ -446,6 +892,7 @@ button {
     min-height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    animation-name: riseIn;
   }
 
   .workspace {
@@ -480,5 +927,16 @@ button {
 
   .publishActions button {
     flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }
