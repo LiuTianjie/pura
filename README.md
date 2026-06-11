@@ -26,6 +26,13 @@ On each developer machine, connect an Agent:
 npx pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"
 ```
 
+On macOS, keep the Agent connected after login or terminal close. Install the CLI globally first so the background service has a stable executable path:
+
+```bash
+npm install -g pura-cli
+pura-cli auto-connect --install
+```
+
 Publish the local Android device:
 
 ```bash
@@ -112,6 +119,19 @@ If the Hub cannot reach the auto-detected Agent URL, specify it:
 pura-cli connect 192.168.100.128:8787 --name "Zhang San" --public-url http://192.168.100.45:8788
 ```
 
+The Agent heartbeat automatically recovers after Wi-Fi or Hub restarts as long as the Agent process is still running. On macOS, install the saved Agent connection as a LaunchAgent so it starts at login and restarts if the terminal is closed:
+
+```bash
+pura-cli auto-connect --install
+```
+
+Check or remove the background service:
+
+```bash
+pura-cli auto-connect --status
+pura-cli auto-connect --uninstall
+```
+
 ## Publish Device
 
 Connect a phone over USB and confirm it is authorized:
@@ -139,6 +159,7 @@ pura-cli connect device --serial RFCY10DHQ3P --name "Samsung S25" --owner "Li Si
 - CLI commands:
   - `pura-cli hub`
   - `pura-cli connect <hub>`
+  - `pura-cli auto-connect`
   - `pura-cli connect device`
   - `pura-cli devices`
 

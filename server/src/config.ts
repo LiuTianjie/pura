@@ -6,6 +6,10 @@ export type PuraConfig = {
   hubUrl?: string;
   agentId?: string;
   agentName?: string;
+  agentPort?: string;
+  publicUrl?: string;
+  host?: string;
+  dataDir?: string;
 };
 
 const configDir = path.join(os.homedir(), ".pura");
