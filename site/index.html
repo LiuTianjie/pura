@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="pura turns USB-connected Android phones into a local-first device wall with a central Hub and native developer Agents."
+    />
+    <meta property="og:title" content="pura | LAN Android device mirroring" />
+    <meta property="og:description" content="Local-first Android mirroring with a Hub, native Agents, and browser tap routing." />
+    <meta property="og:image" content="./assets/pura-social-preview.png" />
+    <title>pura | LAN Android device mirroring</title>
+    <link rel="icon" type="image/png" sizes="256x256" href="./assets/pura-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="scanline" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="pura home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-copy">
+          <strong>pura</strong>
+          <small data-i18n="brand.sub">Local device wall</small>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#quickstart" data-i18n="nav.quickstart">Quickstart</a>
+        <a href="#architecture" data-i18n="nav.architecture">Architecture</a>
+        <a href="#deploy" data-i18n="nav.deploy">Deploy</a>
+        <a href="#release" data-i18n="nav.release">Release</a>
+      </nav>
+      <div class="header-tools">
+        <div class="language-switch" aria-label="Language">
+          <button class="language-option active" type="button" data-lang="en">EN</button>
+          <button class="language-option" type="button" data-lang="zh">中</button>
+        </div>
+        <a class="header-action" href="https://github.com/your-org/pura">GitHub</a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-label="pura product overview">
+        <div class="hero-vignette" aria-hidden="true"></div>
+        <div class="hero-grid" aria-hidden="true"></div>
+
+        <div class="hero-layout">
+          <div class="hero-content">
+            <p class="eyebrow reveal" data-i18n="hero.eyebrow">Local-first Android mirroring</p>
+            <h1 class="reveal" data-i18n="hero.title">Distributed phones. One live Hub.</h1>
+            <p class="hero-lede reveal" data-i18n="hero.lede">
+            pura turns developer-owned USB phones into a shared LAN device wall. ADB stays local;
+            video and tap sessions route through the Hub.
+            </p>
+            <div class="hero-actions reveal" aria-label="Primary actions">
+              <a class="button primary magnetic" href="#quickstart" data-i18n="hero.primary">Quickstart</a>
+              <a class="button secondary magnetic" href="#architecture" data-i18n="hero.secondary">Architecture</a>
+            </div>
+          </div>
+
+          <div class="showcase-card reveal">
+            <div class="showcase-topbar">
+              <span class="traffic red"></span>
+              <span class="traffic amber"></span>
+              <span class="traffic green"></span>
+              <strong data-i18n="showcase.title">Product preview</strong>
+              <small data-i18n="showcase.badge">Hub + Agents</small>
+            </div>
+            <div class="showcase-media">
+              <img
+                class="hero-image"
+                src="./assets/pura-social-preview.png"
+                alt="pura Hub dashboard with Android devices and agent network"
+                data-i18n-attr="alt:showcase.alt"
+              />
+            </div>
+            <div class="signal-panel" aria-label="Live system preview">
+              <div class="signal-header">
+                <span class="pulse-dot"></span>
+                <strong data-i18n="signal.title">Hub online</strong>
+                <small data-i18n="signal.meta">Agents reporting</small>
+              </div>
+              <div class="signal-map" aria-hidden="true">
+                <span class="hub-node">Hub</span>
+                <span class="agent-node a1">Agent A</span>
+                <span class="agent-node a2">Agent B</span>
+                <span class="agent-node a3">Agent C</span>
+                <span class="packet p1"></span>
+                <span class="packet p2"></span>
+                <span class="packet p3"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="quickstart" class="section-shell quickstart">
+        <div class="section-heading reveal">
+          <p class="eyebrow" data-i18n="quick.eyebrow">Quickstart</p>
+          <h2 data-i18n="quick.title">Hub on Docker. Agents by CLI.</h2>
+          <p data-i18n="quick.body">
+            A minimal path from scattered USB devices to a browsable Android wall.
+          </p>
+        </div>
+
+        <div class="command-grid">
+          <article class="command-card reveal">
+            <span class="step">01</span>
+            <h3 data-i18n="quick.step1">Run Hub</h3>
+            <pre><code>docker compose up -d</code></pre>
+            <button class="copy-button" type="button" data-copy="docker compose up -d" data-i18n="copy">Copy</button>
+          </article>
+          <article class="command-card reveal">
+            <span class="step">02</span>
+            <h3 data-i18n="quick.step2">Register Agent</h3>
+            <pre><code>npx pura-cli connect &lt;hub-lan-ip&gt;:8787 --name "Zhang San"</code></pre>
+            <button
+              class="copy-button"
+              type="button"
+              data-copy='npx pura-cli connect <hub-lan-ip>:8787 --name "Zhang San"'
+            >
+              <span data-i18n="copy">Copy</span>
+            </button>
+          </article>
+          <article class="command-card reveal">
+            <span class="step">03</span>
+            <h3 data-i18n="quick.step3">Publish device</h3>
+            <pre><code>npx pura-cli connect device --name "Pixel 8" --owner "Zhang San"</code></pre>
+            <button
+              class="copy-button"
+              type="button"
+              data-copy='npx pura-cli connect device --name "Pixel 8" --owner "Zhang San"'
+            >
+              <span data-i18n="copy">Copy</span>
+            </button>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture" class="section-shell architecture">
+        <div class="section-heading reveal">
+          <p class="eyebrow" data-i18n="arch.eyebrow">Hub / Agent architecture</p>
+          <h2 data-i18n="arch.title">Shared visibility without shared USB.</h2>
+          <p data-i18n="arch.body">
+            The Hub owns discovery and session routing. Agents own physical devices, ADB, video
+            capture, and local tap execution.
+          </p>
+        </div>
+
+        <div class="flow-board reveal" aria-label="pura architecture">
+          <div class="flow-card hub-card">
+            <span class="node-label">Hub</span>
+            <strong data-i18n="arch.hubTitle">Browser device wall</strong>
+            <small data-i18n="arch.hubBody">Online inventory, session routing, video proxy, tap proxy</small>
+          </div>
+
+          <div class="flow-lanes" aria-hidden="true">
+            <span class="lane lane-one"></span>
+            <span class="lane lane-two"></span>
+            <span class="lane lane-three"></span>
+          </div>
+
+          <div class="agent-stack">
+            <div class="flow-card agent-card">
+              <span class="node-label">Agent</span>
+              <strong data-i18n="arch.agentTitle">Developer laptop</strong>
+              <small data-i18n="arch.agentBody">ADB devices, screenrecord, local tap execution</small>
+            </div>
+            <div class="phone-strip" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="deploy" class="section-shell deploy-grid">
+        <div class="section-heading reveal">
+          <p class="eyebrow" data-i18n="deploy.eyebrow">Deployment</p>
+          <h2 data-i18n="deploy.title">A small service for the office LAN.</h2>
+          <p data-i18n="deploy.body">
+            The Hub runs as a containerized control plane. Agents stay native beside the hardware.
+          </p>
+        </div>
+
+        <div class="terminal-card reveal">
+          <div class="tabs" aria-label="Deployment examples">
+            <button class="tab active" type="button" data-tab="compose" data-i18n="deploy.tabCompose">Compose</button>
+            <button class="tab" type="button" data-tab="image" data-i18n="deploy.tabImage">GHCR image</button>
+            <button class="tab" type="button" data-tab="node" data-i18n="deploy.tabNode">Node</button>
+          </div>
+          <div class="tab-panels">
+            <div class="tab-panel active" id="compose-panel">
+              <pre><code>docker compose up -d
+open http://&lt;hub-lan-ip&gt;:8787</code></pre>
+            </div>
+            <div class="tab-panel" id="image-panel">
+              <pre><code>PURA_IMAGE=ghcr.io/&lt;owner&gt;/pura:latest docker compose up -d</code></pre>
+            </div>
+            <div class="tab-panel" id="node-panel">
+              <pre><code>pura-cli hub --host 0.0.0.0 --port 8787</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-shell detail-grid">
+        <article class="detail-card reveal">
+          <span class="detail-kicker" data-i18n="detail.installKicker">Install</span>
+          <h3 data-i18n="detail.installTitle">Lightweight Agent registration.</h3>
+          <p data-i18n="detail.installBody">npx launches a local Agent, stores Hub settings, and reports authorized ADB devices.</p>
+          <pre><code>npx pura-cli --help</code></pre>
+        </article>
+        <article class="detail-card reveal">
+          <span class="detail-kicker" data-i18n="detail.controlKicker">Control</span>
+          <h3 data-i18n="detail.controlTitle">Coordinate-accurate tap routing.</h3>
+          <p data-i18n="detail.controlBody">The Hub receives browser clicks; the owning Agent translates them into ADB input on the phone.</p>
+          <pre><code>POST /api/devices/:id/tap</code></pre>
+        </article>
+        <article class="detail-card reveal">
+          <span class="detail-kicker" data-i18n="detail.safetyKicker">Safety</span>
+          <h3 data-i18n="detail.safetyTitle">LAN boundary by default.</h3>
+          <p data-i18n="detail.safetyBody">Traffic stays between Hub, Agents, and browsers on the local network. No cloud relay or public tunnel is part of the path.</p>
+          <pre><code>ROLE=hub PORT=8787</code></pre>
+        </article>
+      </section>
+
+      <section id="release" class="section-shell release">
+        <div class="release-card reveal">
+          <p class="eyebrow" data-i18n="release.eyebrow">Open-source distribution</p>
+          <h2 data-i18n="release.title">CLI on npm. Hub image on GHCR.</h2>
+          <p data-i18n="release.body">
+            pura ships as the <code>pura-cli</code> package and a containerized Hub, with release
+            automation for tagged versions.
+          </p>
+          <div class="release-steps">
+            <span>npm run check</span>
+            <span>npm pack --dry-run</span>
+            <span>git tag v0.1.0</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>pura</span>
+      <span data-i18n="footer">Local-first Android mirroring for distributed device labs.</span>
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
