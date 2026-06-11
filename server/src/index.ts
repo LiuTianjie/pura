@@ -5,6 +5,8 @@ import { WebSocketServer } from "ws";
 import { installAgentRoutes, startAgentHeartbeat } from "./agent.js";
 import { attachHubVideoClient, installHubRoutes } from "./hub.js";
 import { getLanAddress } from "./network.js";
+import { attachPresenceClient } from "./presence.js";
+import { installScreenshotRoutes } from "./screenshots.js";
 import { attachClient } from "./sessions.js";
 
 const app = express();
@@ -21,6 +23,8 @@ app.use(express.json());
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, name: "pura", role, agentId: role === "agent" ? agentId : undefined });
 });
+
+installScreenshotRoutes(app);
 
 if (role === "hub") {
   installHubRoutes(app);
@@ -52,18 +56,21 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-  const match = url.pathname.match(/^\/ws\/sessions\/([^/]+)\/video$/);
+  const videoMatch = url.pathname.match(/^\/ws\/sessions\/([^/]+)\/video$/);
+  const presenceMatch = url.pathname.match(/^\/ws\/presence\/([^/]+)$/);
 
-  if (!match) {
+  if (!videoMatch && !presenceMatch) {
     socket.destroy();
     return;
   }
 
   wss.handleUpgrade(request, socket, head, (ws) => {
-    if (role === "hub") {
-      attachHubVideoClient(match[1], ws);
+    if (presenceMatch) {
+      attachPresenceClient(decodeURIComponent(presenceMatch[1]), ws);
+    } else if (role === "hub") {
+      attachHubVideoClient(videoMatch![1], ws);
     } else {
-      attachClient(match[1], ws);
+      attachClient(videoMatch![1], ws);
     }
   });
 });

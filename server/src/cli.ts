@@ -56,13 +56,20 @@ async function handleConnect() {
   const port = readFlag("--port") ?? "8788";
   const publicUrl = readFlag("--public-url") ?? `http://${getLanAddress()}:${port}`;
   const host = readFlag("--host") ?? "0.0.0.0";
-  const dataDir = readFlag("--data-dir") ?? "data-agent";
+  const dataDir = resolveAgentDataDir(readFlag("--data-dir") ?? config.dataDir);
 
   writeConfig({ hubUrl, agentId, agentName, agentPort: port, publicUrl, host, dataDir });
 
   console.log(`pura-cli saved hub: ${hubUrl}`);
-  console.log(`pura-cli starting agent: ${agentName} (${agentId})`);
   console.log(`agent URL announced to hub: ${publicUrl}`);
+
+  if (hasFlag("--background") || hasFlag("--install")) {
+    installLaunchAgent();
+    return;
+  }
+
+  console.log(`pura-cli starting agent: ${agentName} (${agentId})`);
+  console.log("Tip: use `--background` to keep the Agent running after this terminal closes.");
 
   startServer({
     ROLE: "agent",
@@ -138,7 +145,7 @@ function startSavedAgent(config: PuraConfig) {
   const agentId = readFlag("--id") ?? config.agentId ?? randomUUID();
   const agentName = readFlag("--name") ?? config.agentName ?? process.env.USER ?? "developer";
   const host = readFlag("--host") ?? config.host ?? "0.0.0.0";
-  const dataDir = readFlag("--data-dir") ?? config.dataDir ?? "data-agent";
+  const dataDir = resolveAgentDataDir(readFlag("--data-dir") ?? config.dataDir);
 
   writeConfig({
     hubUrl: config.hubUrl,
@@ -281,6 +288,11 @@ function escapeXml(value: string) {
     .replaceAll("'", "&apos;");
 }
 
+function resolveAgentDataDir(value?: string) {
+  if (!value) return path.join(os.homedir(), ".pura", "agent-data");
+  return path.isAbsolute(value) ? value : path.resolve(value);
+}
+
 function startServer(env: NodeJS.ProcessEnv) {
   const child = spawn(process.execPath, [new URL("./index.js", import.meta.url).pathname], {
     stdio: "inherit",
@@ -308,7 +320,7 @@ function printHelp() {
 
 Usage:
   pura-cli hub [--host 0.0.0.0] [--port 8787]
-  pura-cli connect <hub-ip-or-url> [--name developer] [--port 8788] [--public-url http://lan-ip:8788]
+  pura-cli connect <hub-ip-or-url> [--name developer] [--port 8788] [--public-url http://lan-ip:8788] [--background]
   pura-cli auto-connect [--install|--uninstall|--status]
   pura-cli connect device [--serial adb-serial] [--name device-name] [--owner developer] [--note text]
   pura-cli devices

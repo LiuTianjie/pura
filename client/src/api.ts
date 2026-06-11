@@ -1,4 +1,4 @@
-import type { ControlAction, DevicePublication, DevicesResponse, MirrorSession } from "./types";
+import type { ControlAction, DevicePublication, DevicesResponse, MirrorSession, SavedScreenshot } from "./types";
 
 export async function fetchDevices(): Promise<DevicesResponse> {
   const response = await fetch("/api/devices");
@@ -6,9 +6,13 @@ export async function fetchDevices(): Promise<DevicesResponse> {
   return response.json();
 }
 
-export async function startSession(serial: string): Promise<MirrorSession> {
+export async function startSession(serial: string, options?: { restart?: boolean }): Promise<MirrorSession> {
   const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/session`, {
-    method: "POST"
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ restart: options?.restart ?? false })
   });
   if (!response.ok) throw new Error(await readError(response));
   const body = await response.json();
@@ -35,6 +39,35 @@ export async function tapDevice(serial: string, xRatio: number, yRatio: number) 
   return response.json();
 }
 
+export async function longPressDevice(serial: string, xRatio: number, yRatio: number, durationMs = 650) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/long-press`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ xRatio, yRatio, durationMs })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function swipeDevice(
+  serial: string,
+  input: { xStartRatio: number; yStartRatio: number; xEndRatio: number; yEndRatio: number; durationMs?: number }
+) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/swipe`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
 export async function controlDevice(serial: string, action: ControlAction, value?: string) {
   const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/control`, {
     method: "POST",
@@ -46,6 +79,24 @@ export async function controlDevice(serial: string, action: ControlAction, value
 
   if (!response.ok) throw new Error(await readError(response));
   return response.json();
+}
+
+export async function saveDeviceScreenshot(serial: string): Promise<SavedScreenshot> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots`, {
+    method: "POST"
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.screenshot;
+}
+
+export async function fetchDeviceScreenshots(serial: string): Promise<SavedScreenshot[]> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots`);
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.screenshots;
 }
 
 export async function publishDevice(serial: string, input: { label: string; owner?: string; note?: string }): Promise<DevicePublication> {

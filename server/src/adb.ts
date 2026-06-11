@@ -76,6 +76,46 @@ export async function tapDevice(serial: string, xRatio: number, yRatio: number) 
   return { x, y, width: size.width, height: size.height };
 }
 
+export async function longPressDevice(serial: string, xRatio: number, yRatio: number, durationMs = 650) {
+  const size = await getDisplaySize(serial);
+  const x = clamp(Math.round(xRatio * size.width), 0, size.width - 1);
+  const y = clamp(Math.round(yRatio * size.height), 0, size.height - 1);
+  const duration = clamp(Math.round(durationMs), 350, 2500);
+
+  await execFileAsync(ADB, ["-s", serial, "shell", "input", "swipe", String(x), String(y), String(x), String(y), String(duration)], {
+    timeout: 4000,
+    maxBuffer: 64 * 1024
+  });
+
+  return { x, y, width: size.width, height: size.height, duration };
+}
+
+export async function swipeDevice(serial: string, input: { xStartRatio: number; yStartRatio: number; xEndRatio: number; yEndRatio: number; durationMs?: number }) {
+  const size = await getDisplaySize(serial);
+  const x1 = clamp(Math.round(input.xStartRatio * size.width), 0, size.width - 1);
+  const y1 = clamp(Math.round(input.yStartRatio * size.height), 0, size.height - 1);
+  const x2 = clamp(Math.round(input.xEndRatio * size.width), 0, size.width - 1);
+  const y2 = clamp(Math.round(input.yEndRatio * size.height), 0, size.height - 1);
+  const duration = clamp(Math.round(input.durationMs ?? 320), 80, 2500);
+
+  await execFileAsync(ADB, ["-s", serial, "shell", "input", "swipe", String(x1), String(y1), String(x2), String(y2), String(duration)], {
+    timeout: 5000,
+    maxBuffer: 64 * 1024
+  });
+
+  return { from: { x: x1, y: y1 }, to: { x: x2, y: y2 }, width: size.width, height: size.height, duration };
+}
+
+export async function captureScreenshot(serial: string): Promise<Buffer> {
+  const { stdout } = await execFileAsync(ADB, ["-s", serial, "exec-out", "screencap", "-p"], {
+    encoding: "buffer",
+    timeout: 5000,
+    maxBuffer: 20 * 1024 * 1024
+  });
+
+  return stdout;
+}
+
 export async function controlDevice(serial: string, action: ControlAction, value?: string) {
   if (action === "text") {
     const text = sanitizeInputText(value ?? "");

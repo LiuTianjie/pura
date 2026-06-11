@@ -1,7 +1,8 @@
 import type express from "express";
-import { controlDevice, listDevices, tapDevice, type ControlAction } from "./adb.js";
+import { captureScreenshot, controlDevice, listDevices, longPressDevice, swipeDevice, tapDevice, type ControlAction } from "./adb.js";
 import { getLanAddress, normalizeHttpUrl } from "./network.js";
 import { getPublications, publishDevice, unpublishDevice } from "./registry.js";
+import { listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
 import { deleteSession, getOrCreateSession, listSessions } from "./sessions.js";
 
 export type AgentOptions = {
@@ -38,7 +39,35 @@ export function installAgentRoutes(app: express.Express) {
   });
 
   app.post("/api/devices/:serial/session", (req, res) => {
-    res.json({ session: getOrCreateSession(req.params.serial) });
+    res.json({ session: getOrCreateSession(req.params.serial, { restart: req.body?.restart === true }) });
+  });
+
+  app.get("/api/devices/:serial/screenshot", async (req, res) => {
+    try {
+      const image = await captureScreenshot(req.params.serial);
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(image);
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to capture device screenshot"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/screenshots", async (req, res) => {
+    try {
+      const image = await captureScreenshot(req.params.serial);
+      res.json({ screenshot: await saveScreenshot(image, req.params.serial) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to save device screenshot"
+      });
+    }
+  });
+
+  app.get("/api/devices/:serial/screenshots", (req, res) => {
+    res.json({ screenshots: listDeviceScreenshots(req.params.serial) });
   });
 
   app.post("/api/devices/:serial/tap", async (req, res) => {
@@ -55,6 +84,46 @@ export function installAgentRoutes(app: express.Express) {
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : "Failed to tap device"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/long-press", async (req, res) => {
+    const xRatio = Number(req.body?.xRatio);
+    const yRatio = Number(req.body?.yRatio);
+    const durationMs = Number(req.body?.durationMs ?? 650);
+
+    if (!Number.isFinite(xRatio) || !Number.isFinite(yRatio) || xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) {
+      res.status(400).json({ error: "xRatio and yRatio must be numbers between 0 and 1" });
+      return;
+    }
+
+    try {
+      res.json({ longPress: await longPressDevice(req.params.serial, xRatio, yRatio, durationMs) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to long press device"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/swipe", async (req, res) => {
+    const xStartRatio = Number(req.body?.xStartRatio);
+    const yStartRatio = Number(req.body?.yStartRatio);
+    const xEndRatio = Number(req.body?.xEndRatio);
+    const yEndRatio = Number(req.body?.yEndRatio);
+    const durationMs = Number(req.body?.durationMs ?? 320);
+
+    if (![xStartRatio, yStartRatio, xEndRatio, yEndRatio].every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
+      res.status(400).json({ error: "Swipe ratios must be numbers between 0 and 1" });
+      return;
+    }
+
+    try {
+      res.json({ swipe: await swipeDevice(req.params.serial, { xStartRatio, yStartRatio, xEndRatio, yEndRatio, durationMs }) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to swipe device"
       });
     }
   });

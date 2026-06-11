@@ -39,6 +39,16 @@ export type MirrorSession = {
   };
 };
 
+export type SavedScreenshot = {
+  id: string;
+  deviceSerial: string;
+  fileName: string;
+  url: string;
+  downloadUrl: string;
+  createdAt: string;
+  sizeBytes: number;
+};
+
 export type DevicesResponse = {
   devices: AndroidDevice[];
   sessions: MirrorSession[];

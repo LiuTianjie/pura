@@ -13,6 +13,9 @@ type MirrorSession = {
   stopTimer?: NodeJS.Timeout;
   startedAt?: number;
   lastError?: string;
+  h264Pending?: Buffer;
+  h264Config: Buffer[];
+  h264Replay: Buffer[];
 };
 
 const sessions = new Map<string, MirrorSession>();
@@ -36,17 +39,20 @@ export type PublicSession = {
   };
 };
 
-export function getOrCreateSession(serial: string): PublicSession {
+export function getOrCreateSession(serial: string, options?: { restart?: boolean }): PublicSession {
   const existingId = sessionsBySerial.get(serial);
   if (existingId) {
     const existing = sessions.get(existingId);
-    if (existing) return toPublicSession(existing);
+    if (existing && !options?.restart) return toPublicSession(existing);
+    if (existing) cleanupSession(existing);
   }
 
   const session: MirrorSession = {
     id: randomUUID(),
     serial,
-    clients: new Set()
+    clients: new Set(),
+    h264Config: [],
+    h264Replay: []
   };
 
   sessions.set(session.id, session);
@@ -84,6 +90,8 @@ export function attachClient(id: string, socket: WebSocket) {
   if (!session.process) {
     startStream(session);
   }
+
+  sendReplay(session, socket);
 
   socket.on("close", () => {
     session.clients.delete(socket);
@@ -126,6 +134,7 @@ function startStream(session: MirrorSession) {
   session.lastError = undefined;
 
   child.stdout.on("data", (chunk: Buffer) => {
+    recordReplay(session, chunk);
     for (const client of session.clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(chunk, { binary: true });
@@ -177,6 +186,87 @@ function cleanupSession(session: MirrorSession) {
 
   sessions.delete(session.id);
   sessionsBySerial.delete(session.serial);
+}
+
+function sendReplay(session: MirrorSession, socket: WebSocket) {
+  for (const chunk of session.h264Replay) {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(chunk, { binary: true });
+    }
+  }
+}
+
+function recordReplay(session: MirrorSession, chunk: Buffer) {
+  const data = session.h264Pending ? Buffer.concat([session.h264Pending, chunk]) : chunk;
+  const starts = findStartCodes(data);
+
+  if (starts.length < 2) {
+    session.h264Pending = starts.length === 1 ? data.subarray(starts[0]) : data.subarray(Math.max(0, data.length - 4));
+    return;
+  }
+
+  for (let index = 0; index < starts.length - 1; index += 1) {
+    const start = starts[index];
+    const nextStart = starts[index + 1];
+    if (nextStart <= start) continue;
+    recordNalUnit(session, data.subarray(start, nextStart));
+  }
+
+  session.h264Pending = data.subarray(starts[starts.length - 1]);
+}
+
+function recordNalUnit(session: MirrorSession, nal: Buffer) {
+  const nalType = getNalType(nal);
+  if (!nalType) return;
+
+  if (nalType === 7 || nalType === 8) {
+    const existingIndex = session.h264Config.findIndex((item) => getNalType(item) === nalType);
+    if (existingIndex >= 0) {
+      session.h264Config[existingIndex] = Buffer.from(nal);
+    } else {
+      session.h264Config.push(Buffer.from(nal));
+    }
+  }
+
+  if (nalType === 5) {
+    session.h264Replay = [...session.h264Config.map((item) => Buffer.from(item)), Buffer.from(nal)];
+    return;
+  }
+
+  if (session.h264Replay.length > 0) {
+    session.h264Replay.push(Buffer.from(nal));
+    trimReplay(session);
+  }
+}
+
+function trimReplay(session: MirrorSession) {
+  const maxBytes = 4 * 1024 * 1024;
+  let total = session.h264Replay.reduce((sum, item) => sum + item.length, 0);
+  while (session.h264Replay.length > session.h264Config.length + 1 && total > maxBytes) {
+    const removed = session.h264Replay.splice(session.h264Config.length, 1)[0];
+    total -= removed.length;
+  }
+}
+
+function getNalType(nal: Buffer) {
+  const startCodeLength = nal[2] === 1 ? 3 : nal[3] === 1 ? 4 : 0;
+  if (!startCodeLength || nal.length <= startCodeLength) return undefined;
+  return nal[startCodeLength] & 0x1f;
+}
+
+function findStartCodes(data: Buffer) {
+  const starts: number[] = [];
+  for (let index = 0; index < data.length - 3; index += 1) {
+    if (data[index] !== 0 || data[index + 1] !== 0) continue;
+    if (data[index + 2] === 1) {
+      starts.push(index);
+      index += 2;
+    } else if (data[index + 2] === 0 && data[index + 3] === 1) {
+      starts.push(index);
+      index += 3;
+    }
+  }
+  return starts;
 }
 
 function toPublicSession(session: MirrorSession): PublicSession {

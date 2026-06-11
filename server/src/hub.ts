@@ -3,6 +3,7 @@ import type express from "express";
 import { WebSocket } from "ws";
 import { makeDeviceId, parseDeviceId } from "./device-id.js";
 import { httpToWs } from "./network.js";
+import { listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
 import type { AndroidDevice } from "./adb.js";
 import type { DevicePublication } from "./registry.js";
 import type { PublicSession } from "./sessions.js";
@@ -88,8 +89,14 @@ export function installHubRoutes(app: express.Express) {
   app.post("/api/devices/:deviceId/session", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
+      const restart = req.body?.restart === true;
+      if (restart) {
+        await deleteHubSessionsForDevice(req.params.deviceId);
+      }
       const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/session`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restart })
       });
       if (!response.ok) {
         res.status(response.status).json(await response.json());
@@ -120,6 +127,51 @@ export function installHubRoutes(app: express.Express) {
     }
   });
 
+  app.get("/api/devices/:deviceId/screenshot", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/screenshot`);
+
+      if (!response.ok) {
+        res.status(response.status).json({ error: await response.text() });
+        return;
+      }
+
+      const image = Buffer.from(await response.arrayBuffer());
+      res.setHeader("Content-Type", response.headers.get("content-type") ?? "image/png");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(image);
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to capture remote device screenshot" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/screenshots", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/screenshot`);
+
+      if (!response.ok) {
+        res.status(response.status).json({ error: await response.text() });
+        return;
+      }
+
+      const image = Buffer.from(await response.arrayBuffer());
+      res.json({ screenshot: await saveScreenshot(image, req.params.deviceId) });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to save remote device screenshot" });
+    }
+  });
+
+  app.get("/api/devices/:deviceId/screenshots", (req, res) => {
+    try {
+      findDevice(req.params.deviceId);
+      res.json({ screenshots: listDeviceScreenshots(req.params.deviceId) });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to list device screenshots" });
+    }
+  });
+
   app.post("/api/devices/:deviceId/tap", async (req, res) => {
     try {
       const target = findDevice(req.params.deviceId);
@@ -131,6 +183,34 @@ export function installHubRoutes(app: express.Express) {
       res.status(response.status).json(await response.json());
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to tap remote device" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/long-press", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/long-press`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body ?? {})
+      });
+      res.status(response.status).json(await response.json());
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to long press remote device" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/swipe", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const response = await fetch(`${target.agent.url}/api/devices/${encodeURIComponent(target.remoteSerial)}/swipe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body ?? {})
+      });
+      res.status(response.status).json(await response.json());
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to swipe remote device" });
     }
   });
 
@@ -163,6 +243,18 @@ export function installHubRoutes(app: express.Express) {
 
     res.json({ deleted: true });
   });
+}
+
+async function deleteHubSessionsForDevice(deviceId: string) {
+  const staleSessions = [...sessions.values()].filter((session) => session.deviceId === deviceId);
+  await Promise.all(
+    staleSessions.map(async (session) => {
+      sessions.delete(session.id);
+      await fetch(`${session.agentUrl}/api/sessions/${encodeURIComponent(session.agentSessionId)}`, {
+        method: "DELETE"
+      }).catch(() => undefined);
+    })
+  );
 }
 
 export function attachHubVideoClient(sessionId: string, client: WebSocket) {
