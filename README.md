@@ -127,6 +127,14 @@ pura-cli connect 192.168.100.128:8787 --name "Zhang San"
 
 The Agent keeps an outbound control WebSocket to the Hub and continuously reports local ADB devices. Use the web UI to publish, rename, unpublish, and manage devices.
 
+The control view includes:
+
+- shared viewer presence and optional shared cursors
+- screen annotations with saved screenshot overlays
+- filtered `adb logcat` views for current app, crashes, network, or all logs
+- Hub-stored APK upload and install
+- deeplink launch from the browser
+
 The Agent still exposes `8788` locally for diagnostics and standalone mode, but the Hub no longer depends on reverse HTTP access to that port. In normal Hub deployments, you should not need `--public-url`.
 
 For diagnostics, you can still override the announced local URL:
@@ -196,8 +204,15 @@ Hub:
 - `GET /api/devices`
 - `POST /api/devices/:deviceId/session`
 - `POST /api/devices/:deviceId/tap`
+- `POST /api/devices/:deviceId/logs`
+- `POST /api/devices/:deviceId/deeplink`
+- `POST /api/devices/:deviceId/packages/:packageId/install`
+- `GET /api/packages`
+- `POST /api/packages`
 - `PUT /api/devices/:deviceId/publication`
 - `DELETE /api/devices/:deviceId/publication`
+- `POST /api/devices/:deviceId/screenshots`
+- `PUT /api/devices/:deviceId/screenshots/:screenshotId/annotated`
 - `GET /api/devices/:deviceId/discussion-doc`
 - `PUT /api/devices/:deviceId/discussion-doc`
 - `POST /api/devices/:deviceId/discussion-doc`
@@ -212,6 +227,9 @@ Agent:
 - `GET /api/devices`
 - `POST /api/devices/:serial/session`
 - `POST /api/devices/:serial/tap`
+- `POST /api/devices/:serial/logs`
+- `POST /api/devices/:serial/deeplink`
+- `POST /api/devices/:serial/packages/:packageId/install`
 - `PUT /api/devices/:serial/publication`
 - `DELETE /api/devices/:serial/publication`
 - `DELETE /api/sessions/:id`

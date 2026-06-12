@@ -6,6 +6,7 @@ import { installAgentRoutes, startAgentControlChannel, startAgentHeartbeat } fro
 import { attachDeviceUiClient } from "./device-ui-state.js";
 import { attachAgentControlClient, attachAgentVideoStream, attachHubVideoClient, installHubRoutes } from "./hub.js";
 import { getLanAddress } from "./network.js";
+import { installPackageRoutes } from "./packages.js";
 import { attachPresenceClient } from "./presence.js";
 import { installScreenshotRoutes } from "./screenshots.js";
 import { attachClient } from "./sessions.js";
@@ -19,13 +20,14 @@ const agentName = process.env.AGENT_NAME ?? process.env.USER;
 const publicUrl = process.env.PUBLIC_URL;
 const hubUrl = process.env.HUB_URL;
 
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT ?? "40mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, name: "pura", role, agentId: role === "agent" ? agentId : undefined });
 });
 
 installScreenshotRoutes(app);
+installPackageRoutes(app);
 
 if (role === "hub") {
   installHubRoutes(app);

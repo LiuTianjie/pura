@@ -8,7 +8,8 @@ import {
   getDiscussionDocStatus,
   insertScreenshotIntoDiscussionDoc
 } from "./discussion-docs.js";
-import { getScreenshot, getScreenshotPath, listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
+import { getPackage } from "./packages.js";
+import { deleteScreenshot, getScreenshot, getScreenshotPath, listDeviceScreenshots, saveAnnotatedScreenshot, saveScreenshot } from "./screenshots.js";
 import type { AndroidDevice } from "./adb.js";
 import type { DevicePublication } from "./registry.js";
 import type { PublicSession } from "./sessions.js";
@@ -75,7 +76,7 @@ const agents = new Map<string, RegisteredAgent>();
 const sessions = new Map<string, HubSession>();
 const pendingAgentRequests = new Map<string, PendingAgentRequest>();
 const AGENT_TTL_MS = Number(process.env.AGENT_TTL_MS ?? 15_000);
-const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.AGENT_REQUEST_TIMEOUT_MS ?? 30_000);
+const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.AGENT_REQUEST_TIMEOUT_MS ?? 150_000);
 
 export function installHubRoutes(app: express.Express) {
   app.post("/api/agents/heartbeat", (req, res) => {
@@ -193,12 +194,33 @@ export function installHubRoutes(app: express.Express) {
     }
   });
 
+  app.put("/api/devices/:deviceId/screenshots/:screenshotId/annotated", async (req, res) => {
+    try {
+      findDevice(req.params.deviceId);
+      const image = decodeDataUrl(req.body?.image);
+      const annotations = Array.isArray(req.body?.annotations) ? req.body.annotations : [];
+      const screenshot = await saveAnnotatedScreenshot(req.params.screenshotId, req.params.deviceId, image, annotations);
+      res.json({ screenshot });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save annotated screenshot" });
+    }
+  });
+
   app.get("/api/devices/:deviceId/screenshots", (req, res) => {
     try {
       findDevice(req.params.deviceId);
       res.json({ screenshots: listDeviceScreenshots(req.params.deviceId) });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to list device screenshots" });
+    }
+  });
+
+  app.delete("/api/devices/:deviceId/screenshots/:screenshotId", async (req, res) => {
+    try {
+      findDevice(req.params.deviceId);
+      res.json({ deleted: await deleteScreenshot(req.params.screenshotId, req.params.deviceId) });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to delete device screenshot" });
     }
   });
 
@@ -293,6 +315,46 @@ export function installHubRoutes(app: express.Express) {
       res.json(await sendAgentRequest(target.agent, "control", { serial: target.remoteSerial, body: req.body ?? {} }));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : "Failed to control remote device" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/logs", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      res.json(await sendAgentRequest(target.agent, "logs", { serial: target.remoteSerial, body: req.body ?? {} }));
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to read remote logs" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/packages/:packageId/install", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      const pkg = getPackage(req.params.packageId);
+      if (!pkg) {
+        res.status(404).json({ error: "APK 不存在，请重新上传" });
+        return;
+      }
+      res.json(
+        await sendAgentRequest(target.agent, "install-apk", {
+          serial: target.remoteSerial,
+          body: {
+            fileName: pkg.originalName,
+            packageUrl: pkg.url
+          }
+        })
+      );
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to install APK" });
+    }
+  });
+
+  app.post("/api/devices/:deviceId/deeplink", async (req, res) => {
+    try {
+      const target = findDevice(req.params.deviceId);
+      res.json(await sendAgentRequest(target.agent, "deeplink", { serial: target.remoteSerial, body: req.body ?? {} }));
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to open deeplink" });
     }
   });
 
@@ -576,6 +638,13 @@ function sendAgentRequest<T = unknown>(agent: RegisteredAgent, command: string, 
       reject(error);
     });
   });
+}
+
+function decodeDataUrl(value: unknown) {
+  if (typeof value !== "string") throw new Error("image is required");
+  const match = value.match(/^data:image\/png;base64,([a-zA-Z0-9+/=]+)$/);
+  if (!match) throw new Error("image must be a PNG data URL");
+  return Buffer.from(match[1], "base64");
 }
 
 function pruneAgents() {

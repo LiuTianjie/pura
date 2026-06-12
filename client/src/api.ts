@@ -1,9 +1,12 @@
 import type {
   ControlAction,
+  DeviceLogs,
   DevicePublication,
   DevicesResponse,
   DiscussionDocStatus,
+  LogLevel,
   MirrorSession,
+  SavedPackage,
   SavedScreenshot
 } from "./types";
 
@@ -98,12 +101,41 @@ export async function saveDeviceScreenshot(serial: string): Promise<SavedScreens
   return body.screenshot;
 }
 
+export async function saveAnnotatedScreenshot(
+  serial: string,
+  screenshotId: string,
+  image: string,
+  annotations: unknown[]
+): Promise<SavedScreenshot> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots/${encodeURIComponent(screenshotId)}/annotated`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ image, annotations })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.screenshot;
+}
+
 export async function fetchDeviceScreenshots(serial: string): Promise<SavedScreenshot[]> {
   const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots`);
 
   if (!response.ok) throw new Error(await readError(response));
   const body = await response.json();
   return body.screenshots;
+}
+
+export async function deleteDeviceScreenshot(serial: string, screenshotId: string): Promise<boolean> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/screenshots/${encodeURIComponent(screenshotId)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.deleted === true;
 }
 
 export async function fetchDiscussionDoc(serial: string): Promise<DiscussionDocStatus> {
@@ -174,6 +206,67 @@ export async function unpublishDevice(serial: string): Promise<DevicePublication
   if (!response.ok) throw new Error(await readError(response));
   const body = await response.json();
   return body.publication;
+}
+
+export async function fetchDeviceLogs(
+  serial: string,
+  input: { preset: DeviceLogs["preset"]; query?: string; minLevel?: LogLevel; lines?: number }
+): Promise<DeviceLogs> {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/logs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.logs;
+}
+
+export async function fetchPackages(): Promise<SavedPackage[]> {
+  const response = await fetch("/api/packages");
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.packages;
+}
+
+export async function uploadPackage(file: File): Promise<SavedPackage> {
+  const response = await fetch("/api/packages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/vnd.android.package-archive",
+      "X-File-Name": encodeURIComponent(file.name)
+    },
+    body: file
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  const body = await response.json();
+  return body.package;
+}
+
+export async function installPackage(serial: string, packageId: string) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/packages/${encodeURIComponent(packageId)}/install`, {
+    method: "POST"
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function openDeeplink(serial: string, url: string) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(serial)}/deeplink`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ url })
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
 }
 
 async function readError(response: Response) {

@@ -43,11 +43,37 @@ export type SavedScreenshot = {
   id: string;
   deviceSerial: string;
   fileName: string;
+  annotatedFileName?: string;
   url: string;
   downloadUrl: string;
+  rawUrl?: string;
+  rawDownloadUrl?: string;
+  createdAt: string;
+  sizeBytes: number;
+  annotationCount?: number;
+  annotations?: unknown[];
+};
+
+export type SavedPackage = {
+  id: string;
+  fileName: string;
+  originalName: string;
+  url: string;
   createdAt: string;
   sizeBytes: number;
 };
+
+export type DeviceLogs = {
+  preset: "current_app" | "crash" | "network" | "all";
+  minLevel?: LogLevel;
+  packageName?: string;
+  pid?: string;
+  pids?: string[];
+  lines: string[];
+  capturedAt: string;
+};
+
+export type LogLevel = "V" | "D" | "I" | "W" | "E" | "F";
 
 export type DiscussionDoc = {
   deviceId: string;

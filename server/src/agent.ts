@@ -1,9 +1,24 @@
 import type express from "express";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { WebSocket } from "ws";
-import { captureScreenshot, controlDevice, listDevices, longPressDevice, swipeDevice, tapDevice, type ControlAction } from "./adb.js";
+import {
+  captureScreenshot,
+  controlDevice,
+  installApk,
+  listDevices,
+  longPressDevice,
+  openDeeplink,
+  readDeviceLogs,
+  swipeDevice,
+  tapDevice,
+  type ControlAction
+} from "./adb.js";
 import { getLanAddress, httpToWs, normalizeHttpUrl } from "./network.js";
+import { getPackage, getPackagePath } from "./packages.js";
 import { getPublications, publishDevice, unpublishDevice } from "./registry.js";
-import { listDeviceScreenshots, saveScreenshot } from "./screenshots.js";
+import { deleteScreenshot, listDeviceScreenshots, saveAnnotatedScreenshot, saveScreenshot } from "./screenshots.js";
 import { deleteSession, getOrCreateSession, listSessions } from "./sessions.js";
 
 export type AgentOptions = {
@@ -89,6 +104,28 @@ export function installAgentRoutes(app: express.Express) {
     res.json({ screenshots: listDeviceScreenshots(req.params.serial) });
   });
 
+  app.delete("/api/devices/:serial/screenshots/:screenshotId", async (req, res) => {
+    try {
+      res.json({ deleted: await deleteScreenshot(req.params.screenshotId, req.params.serial) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to delete screenshot"
+      });
+    }
+  });
+
+  app.put("/api/devices/:serial/screenshots/:screenshotId/annotated", async (req, res) => {
+    try {
+      const image = decodeDataUrl(req.body?.image);
+      const annotations = Array.isArray(req.body?.annotations) ? req.body.annotations : [];
+      res.json({ screenshot: await saveAnnotatedScreenshot(req.params.screenshotId, req.params.serial, image, annotations) });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Failed to save annotated screenshot"
+      });
+    }
+  });
+
   app.post("/api/devices/:serial/tap", async (req, res) => {
     const xRatio = Number(req.body?.xRatio);
     const yRatio = Number(req.body?.yRatio);
@@ -160,6 +197,41 @@ export function installAgentRoutes(app: express.Express) {
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : "Failed to control device"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/logs", async (req, res) => {
+    try {
+      res.json({ logs: await readDeviceLogs(req.params.serial, req.body ?? {}) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to read device logs"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/deeplink", async (req, res) => {
+    try {
+      res.json({ deeplink: await openDeeplink(req.params.serial, requireString(req.body?.url, "url")) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to open deeplink"
+      });
+    }
+  });
+
+  app.post("/api/devices/:serial/packages/:packageId/install", async (req, res) => {
+    try {
+      const pkg = getPackage(req.params.packageId);
+      if (!pkg) {
+        res.status(404).json({ error: "APK 不存在，请重新上传" });
+        return;
+      }
+      res.json({ install: await installApk(req.params.serial, getPackagePath(pkg)) });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to install APK"
       });
     }
   });
@@ -338,8 +410,37 @@ async function runControlCommand(request: HubControlRequest, options: AgentOptio
       if (!action || !controlActions.includes(action)) throw new Error("A supported control action is required");
       return { control: await controlDevice(requireSerial(serial), action, asString(body.value)) };
     }
+    case "logs":
+      return { logs: await readDeviceLogs(requireSerial(serial), body) };
+    case "deeplink":
+      return { deeplink: await openDeeplink(requireSerial(serial), requireString(body.url, "url")) };
+    case "install-apk":
+      return {
+        install: await installApkFromHub(
+          requireSerial(serial),
+          requireHubUrl(options.hubUrl),
+          requireString(body.packageUrl, "packageUrl"),
+          asString(body.fileName) ?? "app.apk"
+        )
+      };
     default:
       throw new Error(`Unsupported agent command: ${request.command}`);
+  }
+}
+
+async function installApkFromHub(serial: string, hubUrl: string, packageUrl: string, fileName: string) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pura-apk-"));
+  const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9_.-]/g, "-") || "app.apk";
+  const apkPath = path.join(tempDir, safeName.toLowerCase().endsWith(".apk") ? safeName : `${safeName}.apk`);
+  try {
+    const url = new URL(packageUrl, hubUrl);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`APK download failed: ${response.status} ${response.statusText}`);
+    const data = Buffer.from(await response.arrayBuffer());
+    await fs.writeFile(apkPath, data);
+    return await installApk(serial, apkPath);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -412,6 +513,13 @@ function requireRatio(value: unknown, name: string) {
     throw new Error(`${name} must be a number between 0 and 1`);
   }
   return number;
+}
+
+function decodeDataUrl(value: unknown) {
+  if (typeof value !== "string") throw new Error("image is required");
+  const match = value.match(/^data:image\/png;base64,([a-zA-Z0-9+/=]+)$/);
+  if (!match) throw new Error("image must be a PNG data URL");
+  return Buffer.from(match[1], "base64");
 }
 
 async function listAgentDevices() {

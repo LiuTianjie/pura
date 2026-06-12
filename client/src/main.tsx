@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  Bug,
   Cable,
   Camera,
   Check,
@@ -21,12 +22,16 @@ import {
   Home,
   Keyboard,
   Languages,
+  Logs,
   Link,
   ListRestart,
   Maximize2,
   Menu,
   MonitorPlay,
   MousePointer2,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightOpen,
   Power,
   Plus,
@@ -35,8 +40,12 @@ import {
   Send,
   Settings,
   Smartphone,
+  Terminal,
+  Trash2,
+  Upload,
   SquareDashedMousePointer,
   Usb,
+  UsersRound,
   UserRound,
   Volume2,
   VolumeX,
@@ -46,26 +55,38 @@ import {
   bindDiscussionDoc,
   controlDevice,
   createDiscussionDoc,
+  deleteDeviceScreenshot,
   endSession,
+  fetchDeviceLogs,
   fetchDeviceScreenshots,
   fetchDevices,
   fetchDiscussionDoc,
+  fetchPackages,
+  installPackage,
   insertScreenshotToDiscussionDoc,
   longPressDevice,
+  openDeeplink,
   publishDevice,
+  saveAnnotatedScreenshot,
   saveDeviceScreenshot,
   startSession,
   swipeDevice,
   tapDevice,
+  uploadPackage,
   unpublishDevice
 } from "./api";
-import type { AndroidDevice, ControlAction, DevicesResponse, DiscussionDocStatus, MirrorSession, SavedScreenshot } from "./types";
+import type { AndroidDevice, ControlAction, DeviceLogs, DevicesResponse, DiscussionDocStatus, LogLevel, MirrorSession, SavedPackage, SavedScreenshot } from "./types";
 import "./styles.css";
 
 type PlayerStatus = "idle" | "connecting" | "live" | "error";
 type Locale = "en" | "zh";
 type ViewMode = "grid" | "focus";
 type AnnotationMode = "control" | "rect" | "draw";
+const ANNOTATION_COLORS = ["#ff5b57", "#d6ff59", "#58d8ff", "#9b7eff", "#ffbf47"] as const;
+type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
+type ScreenshotPreviewState = {
+  screenshot: SavedScreenshot;
+};
 
 const messages = {
   en: {
@@ -76,6 +97,8 @@ const messages = {
     noMachinesPublished: "No machines published",
     devicesToPublish: "Devices to publish",
     allDevicesPublished: "All devices are published",
+    collapseSidebar: "Collapse sidebar",
+    expandSidebar: "Expand sidebar",
     usbHostViewer: "USB host viewer",
     waitingForDevice: "Waiting for device",
     stop: "Stop",
@@ -89,6 +112,7 @@ const messages = {
     annotationControl: "Control",
     annotationDraw: "Circle",
     annotationRect: "Box",
+    annotationColor: "Annotation color",
     clearCanvas: "Clear canvas",
     copied: "Copied",
     copyImageFallback: "Image copy is unavailable here, downloaded instead",
@@ -99,6 +123,11 @@ const messages = {
     deviceName: "Device name",
     deviceManagement: "Device management",
     deviceScreenshots: "Device screenshots",
+    screenshotTray: "Screenshots",
+    screenshotHistory: "Screenshot history",
+    latestShot: "Latest shot",
+    deleteScreenshot: "Delete screenshot",
+    screenshotDeleted: "Screenshot deleted",
     discussionDoc: "Discussion doc",
     discussionDocMissing: "Lark app is not configured",
     discussionDocMissingHint: "Set LARK_APP_ID and LARK_APP_SECRET on the Hub. LARK_DOC_FOLDER_TOKEN is only an optional default folder.",
@@ -146,6 +175,37 @@ const messages = {
     systemControls: "System",
     gestureControls: "Gestures",
     inputControls: "Input",
+    annotations: "Annotations",
+    apps: "Apps",
+    logs: "Logs",
+    viewers: "viewing",
+    logPresetCurrent: "Current app",
+    logPresetCrash: "Crashes",
+    logPresetNetwork: "Network",
+    logPresetAll: "All",
+    logSearch: "Search logs",
+    logLevel: "Minimum log",
+    logLevelVerbose: "All",
+    logLevelDebug: "Debug",
+    logLevelInfo: "Info",
+    logLevelWarn: "Warn",
+    logLevelError: "Error",
+    logLevelFatal: "Fatal",
+    logMeta: "Captured",
+    logCurrentAppEmpty: "No current app logs. Open the app on the phone, then refresh.",
+    liveLogs: "Live",
+    pauseLogs: "Pause live",
+    clearLogs: "Clear",
+    refreshLogs: "Refresh logs",
+    copyLogs: "Copy logs",
+    noLogs: "No logs yet",
+    uploadApk: "Upload APK",
+    installApk: "Install APK",
+    recentPackages: "Recent packages",
+    deeplink: "Deeplink",
+    deeplinkPlaceholder: "scheme://path or https://...",
+    openDeeplink: "Open deeplink",
+    apkInstalled: "APK install command sent",
     back: "Back",
     home: "Home",
     recents: "Recents",
@@ -175,6 +235,8 @@ const messages = {
     noMachinesPublished: "暂无已发布设备",
     devicesToPublish: "待发布设备",
     allDevicesPublished: "所有设备已发布",
+    collapseSidebar: "收起侧栏",
+    expandSidebar: "展开侧栏",
     usbHostViewer: "USB 主机预览",
     waitingForDevice: "等待设备上线",
     stop: "停止",
@@ -188,6 +250,7 @@ const messages = {
     annotationControl: "控制",
     annotationDraw: "圈画",
     annotationRect: "框选",
+    annotationColor: "标注颜色",
     clearCanvas: "清除画布",
     copied: "已复制",
     copyImageFallback: "当前浏览器不支持复制图片，已改为下载",
@@ -198,6 +261,11 @@ const messages = {
     deviceName: "设备名称",
     deviceManagement: "设备管理",
     deviceScreenshots: "设备截图",
+    screenshotTray: "截图",
+    screenshotHistory: "截图历史",
+    latestShot: "最新截图",
+    deleteScreenshot: "删除截图",
+    screenshotDeleted: "截图已删除",
     discussionDoc: "讨论文档",
     discussionDocMissing: "未配置飞书应用",
     discussionDocMissingHint: "请在 Hub 配置 LARK_APP_ID 和 LARK_APP_SECRET。LARK_DOC_FOLDER_TOKEN 只是可选默认目录。",
@@ -245,6 +313,37 @@ const messages = {
     systemControls: "系统键",
     gestureControls: "手势",
     inputControls: "输入",
+    annotations: "标注",
+    apps: "应用",
+    logs: "日志",
+    viewers: "正在看",
+    logPresetCurrent: "当前应用",
+    logPresetCrash: "崩溃",
+    logPresetNetwork: "网络",
+    logPresetAll: "全部",
+    logSearch: "搜索日志",
+    logLevel: "最低日志",
+    logLevelVerbose: "全部",
+    logLevelDebug: "调试",
+    logLevelInfo: "信息",
+    logLevelWarn: "警告",
+    logLevelError: "错误",
+    logLevelFatal: "致命",
+    logMeta: "已抓取",
+    logCurrentAppEmpty: "当前应用暂无日志，先在手机上打开目标应用再刷新。",
+    liveLogs: "实时",
+    pauseLogs: "暂停实时",
+    clearLogs: "清空",
+    refreshLogs: "刷新日志",
+    copyLogs: "复制日志",
+    noLogs: "暂无日志",
+    uploadApk: "上传 APK",
+    installApk: "安装 APK",
+    recentPackages: "最近安装包",
+    deeplink: "Deeplink",
+    deeplinkPlaceholder: "scheme://path 或 https://...",
+    openDeeplink: "打开 Deeplink",
+    apkInstalled: "APK 安装命令已发送",
     back: "返回",
     home: "主页",
     recents: "多任务",
@@ -278,24 +377,36 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [locale, setLocale] = useState<Locale>(readInitialLocale);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [managedSerial, setManagedSerial] = useState<string | null>(null);
   const [cursorsEnabled, setCursorsEnabled] = useState(() => window.sessionStorage.getItem("pura.cursors") !== "off");
   const [viewerIdentity, setViewerIdentity] = useState(readClientIdentity);
   const [annotationMode, setAnnotationMode] = useState<AnnotationMode>("control");
+  const [annotationColor, setAnnotationColor] = useState<AnnotationColor>(readAnnotationColor);
   const [clearSignal, setClearSignal] = useState(0);
+  const [currentAnnotations, setCurrentAnnotations] = useState<SharedAnnotation[]>([]);
+  const [viewerRoster, setViewerRoster] = useState<ViewerPresence[]>([]);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [latestScreenshot, setLatestScreenshot] = useState<SavedScreenshot | null>(null);
   const [screenshotCopied, setScreenshotCopied] = useState(false);
+  const [deviceScreenshots, setDeviceScreenshots] = useState<SavedScreenshot[]>([]);
+  const [screenshotsLoading, setScreenshotsLoading] = useState(false);
+  const [copiedScreenshotId, setCopiedScreenshotId] = useState<string | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<ScreenshotPreviewState | null>(null);
   const [selectedDiscussionDoc, setSelectedDiscussionDoc] = useState<DiscussionDocStatus | null>(null);
   const [embeddedDocUrl, setEmbeddedDocUrl] = useState<string | null>(null);
   const [embeddedDocWidth, setEmbeddedDocWidth] = useState(readEmbeddedDocWidth);
   const deviceUiSocketRef = useRef<WebSocket | null>(null);
   const embeddedDocUrlRef = useRef<string | null>(null);
+  const screenshotPreviewTimerRef = useRef<number | undefined>(undefined);
   const t = useCallback((key: MessageKey) => messages[locale][key], [locale]);
 
   const selectedDevice = useMemo(
     () => data.devices.find((device) => device.serial === selectedSerial) ?? null,
     [data.devices, selectedSerial]
   );
+  const showEmbeddedDoc = Boolean(embeddedDocUrl && !logsOpen);
+  const showAuxPanel = logsOpen || showEmbeddedDoc;
   const publishedDevices = useMemo(
     () => data.devices.filter((device) => device.publication?.published),
     [data.devices]
@@ -316,6 +427,7 @@ function App() {
     }
 
     let cancelled = false;
+    setSelectedDiscussionDoc(null);
     void fetchDiscussionDoc(selectedDevice.serial)
       .then((status) => {
         if (!cancelled) setSelectedDiscussionDoc(status);
@@ -328,6 +440,43 @@ function App() {
       cancelled = true;
     };
   }, [selectedDevice?.serial]);
+
+  useEffect(() => {
+    if (!selectedDevice) {
+      setDeviceScreenshots([]);
+      setLatestScreenshot(null);
+      setScreenshotPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    setDeviceScreenshots([]);
+    setLatestScreenshot(null);
+    setScreenshotPreview(null);
+    setScreenshotCopied(false);
+    setCopiedScreenshotId(null);
+    setScreenshotsLoading(true);
+    void fetchDeviceScreenshots(selectedDevice.serial)
+      .then((screenshots) => {
+        if (!cancelled) setDeviceScreenshots(screenshots);
+      })
+      .catch(() => {
+        if (!cancelled) setDeviceScreenshots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setScreenshotsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDevice?.serial]);
+
+  useEffect(() => {
+    return () => {
+      if (screenshotPreviewTimerRef.current) window.clearTimeout(screenshotPreviewTimerRef.current);
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -358,6 +507,11 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem("pura.embeddedDocWidth", String(embeddedDocWidth));
   }, [embeddedDocWidth]);
+
+  useEffect(() => {
+    setCurrentAnnotations([]);
+    setViewerRoster([]);
+  }, [selectedDevice?.serial]);
 
   useEffect(() => {
     embeddedDocUrlRef.current = embeddedDocUrl;
@@ -450,9 +604,17 @@ function App() {
     setError(null);
     try {
       const screenshot = await saveDeviceScreenshot(device.serial);
-      setLatestScreenshot(screenshot);
+      const annotatedScreenshot =
+        currentAnnotations.length > 0 ? await annotateAndSaveScreenshot(device.serial, screenshot, currentAnnotations).catch(() => screenshot) : screenshot;
+      setLatestScreenshot(annotatedScreenshot);
+      setDeviceScreenshots((current) =>
+        device.serial === selectedSerial ? [annotatedScreenshot, ...current.filter((item) => item.id !== annotatedScreenshot.id)] : current
+      );
+      setScreenshotPreview({ screenshot: annotatedScreenshot });
+      if (screenshotPreviewTimerRef.current) window.clearTimeout(screenshotPreviewTimerRef.current);
+      screenshotPreviewTimerRef.current = window.setTimeout(() => setScreenshotPreview(null), 4200);
       setScreenshotCopied(false);
-      return screenshot;
+      return annotatedScreenshot;
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : t("errorScreenshot"));
       return undefined;
@@ -465,13 +627,27 @@ function App() {
     try {
       await copyScreenshotImage(screenshot);
       setScreenshotCopied(true);
+      setCopiedScreenshotId(screenshot.id);
       window.setTimeout(() => setScreenshotCopied(false), 1600);
+      window.setTimeout(() => setCopiedScreenshotId(null), 1600);
       return "copied" as const;
     } catch (nextError) {
       downloadSavedScreenshot(screenshot);
       setScreenshotCopied(false);
       setError(t("copyImageFallback"));
       return "downloaded" as const;
+    }
+  };
+
+  const removeScreenshot = async (screenshot: SavedScreenshot) => {
+    setError(null);
+    try {
+      await deleteDeviceScreenshot(screenshot.deviceSerial, screenshot.id);
+      setDeviceScreenshots((current) => current.filter((item) => item.id !== screenshot.id));
+      if (latestScreenshot?.id === screenshot.id) setLatestScreenshot(null);
+      if (screenshotPreview?.screenshot.id === screenshot.id) setScreenshotPreview(null);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : t("errorScreenshot"));
     }
   };
 
@@ -489,7 +665,27 @@ function App() {
     }
   };
 
+  const resetDeviceScopedUi = () => {
+    setSelectedDiscussionDoc(null);
+    setEmbeddedDocUrl(null);
+    embeddedDocUrlRef.current = null;
+    setDeviceScreenshots([]);
+    setScreenshotsLoading(false);
+    setLatestScreenshot(null);
+    setScreenshotCopied(false);
+    setCopiedScreenshotId(null);
+    setScreenshotPreview(null);
+    if (screenshotPreviewTimerRef.current) {
+      window.clearTimeout(screenshotPreviewTimerRef.current);
+      screenshotPreviewTimerRef.current = undefined;
+    }
+    setCurrentAnnotations([]);
+    setViewerRoster([]);
+    setClearSignal((current) => current + 1);
+  };
+
   const selectDevice = (device: AndroidDevice) => {
+    if (device.serial !== selectedSerial) resetDeviceScopedUi();
     setSelectedSerial(device.serial);
     if (session && session.serial !== device.serial) {
       setSession(null);
@@ -550,92 +746,105 @@ function App() {
   };
 
   return (
-    <main className="shell">
-      <aside className="rail">
-        <div className="brand">
-          <span className="brandMark">
-            <MonitorPlay size={19} />
-          </span>
-          <div>
-            <h1>{t("appTitle")}</h1>
-            <p>{t("appSubtitle")}</p>
+    <main className={`shell ${railCollapsed ? "railCollapsed" : ""}`}>
+      <aside className="rail" aria-label={t("appTitle")}>
+        <div className="railTop">
+          <div className="brand">
+            <span className="brandMark">
+              <MonitorPlay size={19} />
+            </span>
+            <div className="brandText">
+              <h1>{t("appTitle")}</h1>
+              <p>{t("appSubtitle")}</p>
+            </div>
           </div>
+          <button
+            className="railCollapseButton"
+            type="button"
+            onClick={() => setRailCollapsed((current) => !current)}
+            title={railCollapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-label={railCollapsed ? t("expandSidebar") : t("collapseSidebar")}
+          >
+            {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         </div>
 
-        <div className="railControls">
-          <button className="refreshButton" onClick={() => void refresh()}>
-            <RefreshCw size={16} />
-            {t("refresh")}
-          </button>
-          <button className="languageButton" onClick={() => setLocale((current) => (current === "en" ? "zh" : "en"))}>
-            <Languages size={15} />
-            {t("languageToggle")}
-          </button>
+        <div className="railBody" aria-hidden={railCollapsed}>
+          <div className="railControls">
+            <button className="refreshButton" onClick={() => void refresh()}>
+              <RefreshCw size={16} />
+              {t("refresh")}
+            </button>
+            <button className="languageButton" onClick={() => setLocale((current) => (current === "en" ? "zh" : "en"))}>
+              <Languages size={15} />
+              {t("languageToggle")}
+            </button>
+          </div>
+
+          <section className="deviceList" aria-label={t("publishedMachines")}>
+            <div className="sectionLabel">
+              <Radio size={14} />
+              {t("publishedMachines")}
+            </div>
+            {publishedDevices.length === 0 ? (
+              <div className="emptyState">
+                <MonitorPlay size={22} />
+                <span>{t("noMachinesPublished")}</span>
+              </div>
+            ) : (
+              publishedDevices.map((device) => (
+                <div
+                  className={`deviceItem published ${device.serial === selectedSerial ? "selected" : ""}`}
+                  key={device.serial}
+                >
+                  <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
+                    <Smartphone size={19} />
+                    <span className="deviceCopy">
+                      <strong>{displayName(device)}</strong>
+                      <small>{device.publication?.owner || device.serial}</small>
+                    </span>
+                    <StatusDot state={device.state} />
+                  </button>
+                  <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
+                    <Settings size={15} />
+                  </button>
+                </div>
+              ))
+            )}
+          </section>
+
+          <section className="deviceList compact" aria-label={t("devicesToPublish")}>
+            <div className="sectionLabel">
+              <Usb size={14} />
+              {t("devicesToPublish")}
+            </div>
+            {localDevices.length === 0 ? (
+              <div className="emptyState small">
+                <Usb size={18} />
+                <span>{t("allDevicesPublished")}</span>
+              </div>
+            ) : (
+              localDevices.map((device) => (
+                <div
+                  className={`deviceItem ${device.serial === selectedSerial ? "selected" : ""}`}
+                  key={device.serial}
+                >
+                  <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
+                    <Smartphone size={18} />
+                    <span className="deviceCopy">
+                      <strong>{formatDeviceName(device)}</strong>
+                      <small>{device.serial}</small>
+                    </span>
+                    <StatusDot state={device.state} />
+                  </button>
+                  <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
+                    <Settings size={15} />
+                  </button>
+                </div>
+              ))
+            )}
+          </section>
         </div>
-
-        <section className="deviceList" aria-label={t("publishedMachines")}>
-          <div className="sectionLabel">
-            <Radio size={14} />
-            {t("publishedMachines")}
-          </div>
-          {publishedDevices.length === 0 ? (
-            <div className="emptyState">
-              <MonitorPlay size={22} />
-              <span>{t("noMachinesPublished")}</span>
-            </div>
-          ) : (
-            publishedDevices.map((device) => (
-              <div
-                className={`deviceItem published ${device.serial === selectedSerial ? "selected" : ""}`}
-                key={device.serial}
-              >
-                <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
-                  <Smartphone size={19} />
-                  <span className="deviceCopy">
-                    <strong>{displayName(device)}</strong>
-                    <small>{device.publication?.owner || device.serial}</small>
-                  </span>
-                  <StatusDot state={device.state} />
-                </button>
-                <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
-                  <Settings size={15} />
-                </button>
-              </div>
-            ))
-          )}
-        </section>
-
-        <section className="deviceList compact" aria-label={t("devicesToPublish")}>
-          <div className="sectionLabel">
-            <Usb size={14} />
-            {t("devicesToPublish")}
-          </div>
-          {localDevices.length === 0 ? (
-            <div className="emptyState small">
-              <Usb size={18} />
-              <span>{t("allDevicesPublished")}</span>
-            </div>
-          ) : (
-            localDevices.map((device) => (
-              <div
-                className={`deviceItem ${device.serial === selectedSerial ? "selected" : ""}`}
-                key={device.serial}
-              >
-                <button className="deviceSelectButton" type="button" onClick={() => void selectDeviceFromRail(device)}>
-                  <Smartphone size={18} />
-                  <span className="deviceCopy">
-                    <strong>{formatDeviceName(device)}</strong>
-                    <small>{device.serial}</small>
-                  </span>
-                  <StatusDot state={device.state} />
-                </button>
-                <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
-                  <Settings size={15} />
-                </button>
-              </div>
-            ))
-          )}
-        </section>
       </aside>
 
       <section className="workspace">
@@ -644,11 +853,11 @@ function App() {
             <p className="eyebrow">{viewMode === "grid" ? t("phoneGridEyebrow") : t("usbHostViewer")}</p>
             <h2>{viewMode === "grid" ? t("phoneGrid") : selectedDevice ? displayName(selectedDevice) : t("waitingForDevice")}</h2>
           </div>
-          <div className="viewTabs" role="tablist" aria-label="Console view">
-            <button className={viewMode === "grid" ? "active" : ""} type="button" onClick={() => setViewMode("grid")}>
+          <div className={`viewTabs mode-${viewMode}`} role="tablist" aria-label="Console view">
+            <button className={`segmentedItem ${viewMode === "grid" ? "active" : ""}`} type="button" onClick={() => setViewMode("grid")}>
               {t("gridView")}
             </button>
-            <button className={viewMode === "focus" ? "active" : ""} type="button" onClick={() => setViewMode("focus")}>
+            <button className={`segmentedItem ${viewMode === "focus" ? "active" : ""}`} type="button" onClick={() => setViewMode("focus")}>
               {t("focusView")}
             </button>
           </div>
@@ -660,6 +869,10 @@ function App() {
             <button className="secondary" onClick={() => void captureCurrentDevice()} disabled={!selectedDevice || selectedDevice.state !== "device" || loading}>
               <Camera size={16} />
               {t("screenshot")}
+            </button>
+            <button className={`secondary ${logsOpen ? "activeAction" : ""}`} onClick={() => setLogsOpen((current) => !current)} disabled={!selectedDevice || selectedDevice.state !== "device"}>
+              <Logs size={16} />
+              {t("logs")}
             </button>
             <button
               className="primary"
@@ -693,92 +906,24 @@ function App() {
           />
         ) : (
           <>
-            <div className="metaStrip">
-              <InfoPill tone="link" icon={<Cable size={15} />} label={selectedDevice?.transport.toUpperCase() ?? "USB"} />
-              <InfoPill
-                tone="screen"
-                icon={<Smartphone size={15} />}
-                label={selectedDevice?.size ? `${selectedDevice.size.width}x${selectedDevice.size.height}` : t("unknownSize")}
-              />
-              <InfoPill tone={selectedDevice?.state === "device" ? "ready" : "warning"} icon={<Circle size={13} />} label={selectedDevice?.state ?? "offline"} />
-              <InfoPill tone="gesture" icon={<MousePointer2 size={15} />} label={t("clickToTap")} />
-              {selectedDevice?.agentName ? <InfoPill tone="agent" icon={<Radio size={15} />} label={selectedDevice.agentName} /> : null}
-              {selectedDevice?.publication?.owner ? <InfoPill tone="owner" icon={<UserRound size={15} />} label={selectedDevice.publication.owner} /> : null}
-              <button
-                className={`cursorToggle ${cursorsEnabled ? "active" : ""}`}
-                type="button"
-                onClick={() => setCursorsEnabled((current) => !current)}
-              >
-                {cursorsEnabled ? <Eye size={15} /> : <EyeOff size={15} />}
-                {cursorsEnabled ? t("cursorsOn") : t("cursorsOff")}
-              </button>
-              <label className="cursorNameControl">
-                <UserRound size={14} />
-                <input
-                  value={viewerIdentity.name}
-                  aria-label={t("cursorName")}
-                  title={t("cursorName")}
-                  maxLength={24}
-                  onChange={(event) => {
-                    const next = {
-                      ...viewerIdentity,
-                      name: normalizeViewerName(event.target.value, viewerIdentity.id)
-                    };
-                    saveClientIdentity(next);
-                    setViewerIdentity(next);
-                  }}
-                />
-              </label>
-              <div className="annotationTools" aria-label="Annotation tools">
-                <button
-                  className={annotationMode === "control" ? "active" : ""}
-                  type="button"
-                  onClick={() => setAnnotationMode("control")}
-                  title={t("annotationControl")}
-                >
-                  <MousePointer2 size={14} />
-                  {t("annotationControl")}
-                </button>
-                <button
-                  className={annotationMode === "rect" ? "active" : ""}
-                  type="button"
-                  onClick={() => setAnnotationMode("rect")}
-                  title={t("annotationRect")}
-                >
-                  <SquareDashedMousePointer size={14} />
-                  {t("annotationRect")}
-                </button>
-                <button
-                  className={annotationMode === "draw" ? "active" : ""}
-                  type="button"
-                  onClick={() => setAnnotationMode("draw")}
-                  title={t("annotationDraw")}
-                >
-                  <Circle size={13} />
-                  {t("annotationDraw")}
-                </button>
-                <button type="button" onClick={() => setClearSignal((current) => current + 1)} title={t("clearCanvas")}>
-                  <Delete size={14} />
-                  {t("clearCanvas")}
-                </button>
-              </div>
-            </div>
+            <FocusMetaBar
+              device={selectedDevice}
+              t={t}
+              viewers={viewerRoster}
+              self={viewerIdentity}
+              cursorsEnabled={cursorsEnabled}
+              onToggleCursors={() => setCursorsEnabled((current) => !current)}
+              onNameChange={(name) => {
+                const next = { ...viewerIdentity, name: normalizeViewerName(name, viewerIdentity.id) };
+                saveClientIdentity(next);
+                setViewerIdentity(next);
+              }}
+            />
 
-            {latestScreenshot && latestScreenshot.deviceSerial === selectedDevice?.serial ? (
-              <ScreenshotResult
-                screenshot={latestScreenshot}
-                copied={screenshotCopied}
-                t={t}
-                onCopy={() => void copyScreenshot(latestScreenshot)}
-                onInsert={
-                  selectedDevice && selectedDiscussionDoc?.enabled && selectedDiscussionDoc.configured && selectedDiscussionDoc.doc
-                    ? () => insertScreenshotIntoDoc(selectedDevice, latestScreenshot)
-                    : undefined
-                }
-              />
-            ) : null}
-
-            <div className={`focusSurface ${embeddedDocUrl ? "withEmbeddedDoc" : ""}`}>
+            <div
+              className={`focusSurface ${showAuxPanel ? "withAuxPanel" : ""}`}
+              style={{ "--aux-panel-width": showAuxPanel ? `${embeddedDocWidth}px` : "0px" } as React.CSSProperties}
+            >
               <div className="sidePanelStack">
                 <ControlPanel
                   device={selectedDevice}
@@ -786,7 +931,24 @@ function App() {
                   t={t}
                   onError={(message) => setError(message)}
                 />
-                {selectedDevice && selectedDiscussionDoc?.enabled ? (
+                <ScreenshotTray
+                  device={selectedDevice}
+                  screenshots={deviceScreenshots}
+                  latestScreenshot={latestScreenshot?.deviceSerial === selectedDevice?.serial ? latestScreenshot : null}
+                  copiedScreenshotId={copiedScreenshotId}
+                  loading={loading || screenshotsLoading}
+                  t={t}
+                  onCapture={() => captureCurrentDevice(selectedDevice ?? undefined)}
+                  onCopy={(screenshot) => copyScreenshot(screenshot)}
+                  onDelete={(screenshot) => removeScreenshot(screenshot)}
+                  onInsertDoc={
+                    selectedDevice && selectedDiscussionDoc?.enabled && selectedDiscussionDoc.configured && selectedDiscussionDoc.doc
+                      ? (screenshot) => insertScreenshotIntoDoc(selectedDevice, screenshot)
+                      : undefined
+                  }
+                />
+                <AppToolsPanel key={`apps-${selectedSerial ?? "none"}`} device={selectedDevice} loading={loading} t={t} onError={(message) => setError(message)} />
+                {selectedDevice ? (
                   <DiscussionDocPanel
                     device={selectedDevice}
                     latestScreenshot={latestScreenshot?.deviceSerial === selectedDevice.serial ? latestScreenshot : null}
@@ -805,9 +967,18 @@ function App() {
                 cursorsEnabled={cursorsEnabled}
                 clientIdentity={viewerIdentity}
                 annotationMode={annotationMode}
+                annotationColor={annotationColor}
+                onAnnotationModeChange={setAnnotationMode}
+                onAnnotationColorChange={(color) => {
+                  setAnnotationColor(color);
+                  saveAnnotationColor(color);
+                }}
+                onClearAnnotations={() => setClearSignal((current) => current + 1)}
                 clearSignal={clearSignal}
+                onAnnotationsChange={setCurrentAnnotations}
+                onViewersChange={setViewerRoster}
               />
-              {embeddedDocUrl ? (
+              {showEmbeddedDoc && embeddedDocUrl ? (
                 <EmbeddedDocPanel
                   url={embeddedDocUrl}
                   width={embeddedDocWidth}
@@ -817,7 +988,28 @@ function App() {
                   onClose={closeEmbeddedDoc}
                 />
               ) : null}
+              {logsOpen ? (
+                <SideLogsPanel
+                  key={`logs-${selectedSerial ?? "none"}`}
+                  width={embeddedDocWidth}
+                  device={selectedDevice}
+                  loading={loading}
+                  t={t}
+                  onResize={resizeEmbeddedDoc}
+                  onError={(message) => setError(message)}
+                  onClose={() => setLogsOpen(false)}
+                />
+              ) : null}
             </div>
+            {screenshotPreview && screenshotPreview.screenshot.deviceSerial === selectedDevice?.serial ? (
+              <ScreenshotFlash
+                screenshot={screenshotPreview.screenshot}
+                copied={screenshotCopied && copiedScreenshotId === screenshotPreview.screenshot.id}
+                t={t}
+                onCopy={() => void copyScreenshot(screenshotPreview.screenshot)}
+                onDismiss={() => setScreenshotPreview(null)}
+              />
+            ) : null}
           </>
         )}
       </section>
@@ -828,8 +1020,6 @@ function App() {
           loading={loading}
           t={t}
           onClose={() => setManagedSerial(null)}
-          onCapture={(device) => captureCurrentDevice(device)}
-          onCopy={(screenshot) => copyScreenshot(screenshot)}
           onPublish={(device, input) => void publishSelectedDevice(device, input)}
           onUnpublish={(device) => void unpublishSelectedDevice(device)}
         />
@@ -844,8 +1034,6 @@ function DeviceManager({
   loading,
   t,
   onClose,
-  onCapture,
-  onCopy,
   onPublish,
   onUnpublish
 }: {
@@ -853,22 +1041,17 @@ function DeviceManager({
   loading: boolean;
   t: (key: MessageKey) => string;
   onClose: () => void;
-  onCapture: (device: AndroidDevice) => Promise<SavedScreenshot | undefined>;
-  onCopy: (screenshot: SavedScreenshot) => Promise<"copied" | "downloaded">;
   onPublish: (device: AndroidDevice, input: { label: string; owner?: string; note?: string }) => void;
   onUnpublish: (device: AndroidDevice) => void;
 }) {
   const [label, setLabel] = useState(device.publication?.label ?? formatDeviceName(device));
   const [owner, setOwner] = useState(device.publication?.owner ?? "");
   const [note, setNote] = useState(device.publication?.note ?? "");
-  const [screenshots, setScreenshots] = useState<SavedScreenshot[]>([]);
-  const [copiedScreenshotId, setCopiedScreenshotId] = useState<string | null>(null);
 
   useEffect(() => {
     setLabel(device.publication?.label ?? formatDeviceName(device));
     setOwner(device.publication?.owner ?? "");
     setNote(device.publication?.note ?? "");
-    void fetchDeviceScreenshots(device.serial).then(setScreenshots).catch(() => setScreenshots([]));
   }, [device]);
 
   const submit = (event: React.FormEvent) => {
@@ -879,21 +1062,6 @@ function DeviceManager({
       owner: owner.trim() || undefined,
       note: note.trim() || undefined
     });
-  };
-
-  const capture = async () => {
-    const screenshot = await onCapture(device);
-    if (screenshot) {
-      setScreenshots((current) => [screenshot, ...current.filter((item) => item.id !== screenshot.id)]);
-    }
-  };
-
-  const copy = async (screenshot: SavedScreenshot) => {
-    const result = await onCopy(screenshot);
-    if (result === "copied") {
-      setCopiedScreenshotId(screenshot.id);
-      window.setTimeout(() => setCopiedScreenshotId(null), 1600);
-    }
   };
 
   return (
@@ -945,36 +1113,6 @@ function DeviceManager({
           </div>
         </form>
 
-        <section className="managerScreenshots">
-          <div className="managerSectionHeader">
-            <span>{t("deviceScreenshots")}</span>
-            <button className="secondary" type="button" disabled={loading || device.state !== "device"} onClick={() => void capture()}>
-              <Camera size={15} />
-              {t("screenshot")}
-            </button>
-          </div>
-          {screenshots.length === 0 ? (
-            <div className="screenshotEmpty">{t("noScreenshots")}</div>
-          ) : (
-            <div className="screenshotList">
-              {screenshots.map((screenshot) => (
-                <article className="screenshotItem" key={screenshot.id}>
-                  <img src={screenshot.url} alt="" loading="lazy" />
-                  <div>
-                    <strong>{new Date(screenshot.createdAt).toLocaleString()}</strong>
-                    <span>{Math.round(screenshot.sizeBytes / 1024)} KB</span>
-                  </div>
-                  <button className="iconButton" type="button" onClick={() => void copy(screenshot)} title={t("copyImage")}>
-                    {copiedScreenshotId === screenshot.id ? <Check size={15} /> : <Copy size={15} />}
-                  </button>
-                  <a className="iconButton" href={screenshot.downloadUrl} download title={t("download")}>
-                    <Download size={15} />
-                  </a>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
       </section>
     </div>
   );
@@ -1174,19 +1312,6 @@ function EmbeddedDocPanel({
   return (
     <section className="embeddedDocPanel" aria-label={t("discussionDoc")} style={{ width }}>
       <button className="embeddedDocResizeHandle" type="button" onPointerDown={startResize} title={t("resizeDocPreview")} aria-label={t("resizeDocPreview")} />
-      <div className="embeddedDocHeader">
-        <div>
-          <span>{t("discussionDoc")}</span>
-        </div>
-        <div className="embeddedDocActions">
-          <a className="iconButton" href={frameUrl} target="_blank" rel="noreferrer" title={t("openDoc")}>
-            <ExternalLink size={16} />
-          </a>
-          <button className="iconButton" type="button" onClick={onClose} title={t("closeDocPreview")}>
-            <X size={17} />
-          </button>
-        </div>
-      </div>
       <form className="embeddedDocAddressBar" onSubmit={openDraft}>
         <Link size={15} />
         <input
@@ -1195,8 +1320,13 @@ function EmbeddedDocPanel({
           onChange={(event) => setDraftUrl(event.target.value)}
           placeholder="https://.../docx/..."
         />
+        <a className="iconButton" href={frameUrl} target="_blank" rel="noreferrer" title={t("openDoc")}>
+          <ExternalLink size={16} />
+        </a>
+        <button className="iconButton" type="button" onClick={onClose} title={t("closeDocPreview")}>
+          <X size={17} />
+        </button>
       </form>
-      <p className="embeddedDocHint">{t("docPreviewHint")}</p>
       <iframe
         className="embeddedDocFrame"
         title={t("discussionDoc")}
@@ -1208,49 +1338,180 @@ function EmbeddedDocPanel({
   );
 }
 
-function ScreenshotResult({
+function SideLogsPanel({
+  width,
+  device,
+  loading,
+  t,
+  onResize,
+  onError,
+  onClose
+}: {
+  width: number;
+  device: AndroidDevice | null;
+  loading: boolean;
+  t: (key: MessageKey) => string;
+  onResize: (width: number) => void;
+  onError: (message: string) => void;
+  onClose: () => void;
+}) {
+  const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = width;
+
+    const move = (moveEvent: PointerEvent) => {
+      onResize(clamp(startWidth - (moveEvent.clientX - startX), 360, 920));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  return (
+    <aside className="auxSidePanel logsSidePanel" style={{ width }} aria-label={t("logs")}>
+      <button className="embeddedDocResizeHandle" type="button" onPointerDown={startResize} title={t("resizeDocPreview")} aria-label={t("resizeDocPreview")} />
+      <LogsPanel device={device} loading={loading} t={t} onError={onError} onClose={onClose} />
+    </aside>
+  );
+}
+
+function ScreenshotTray({
+  device,
+  screenshots,
+  latestScreenshot,
+  copiedScreenshotId,
+  loading,
+  t,
+  onCapture,
+  onCopy,
+  onDelete,
+  onInsertDoc
+}: {
+  device: AndroidDevice | null;
+  screenshots: SavedScreenshot[];
+  latestScreenshot: SavedScreenshot | null;
+  copiedScreenshotId: string | null;
+  loading: boolean;
+  t: (key: MessageKey) => string;
+  onCapture: () => Promise<SavedScreenshot | undefined>;
+  onCopy: (screenshot: SavedScreenshot) => Promise<"copied" | "downloaded">;
+  onDelete: (screenshot: SavedScreenshot) => void;
+  onInsertDoc?: (screenshot: SavedScreenshot) => Promise<boolean>;
+}) {
+  const [insertedScreenshotId, setInsertedScreenshotId] = useState<string | null>(null);
+  const shownScreenshots = screenshots.filter((screenshot) => screenshot.id !== latestScreenshot?.id).slice(0, 8);
+
+  const insert = async (screenshot: SavedScreenshot) => {
+    if (!onInsertDoc) return;
+    const ok = await onInsertDoc(screenshot);
+    if (!ok) return;
+    setInsertedScreenshotId(screenshot.id);
+    window.setTimeout(() => setInsertedScreenshotId(null), 1600);
+  };
+
+  return (
+    <section className="screenshotTray">
+      <div className="trayHeader">
+        <div>
+          <span>
+            <Camera size={14} />
+            {t("screenshotTray")}
+          </span>
+          <strong>{latestScreenshot ? t("latestShot") : t("screenshotHistory")}</strong>
+        </div>
+        <button className="primary trayCaptureButton" type="button" disabled={!device || device.state !== "device" || loading} onClick={() => void onCapture()}>
+          <Camera size={14} />
+          {t("screenshot")}
+        </button>
+      </div>
+
+      {latestScreenshot ? (
+        <article className="latestScreenshotCard">
+          <img src={latestScreenshot.url} alt="" />
+          <div>
+            <strong>{new Date(latestScreenshot.createdAt).toLocaleTimeString()}</strong>
+            <span>{Math.round(latestScreenshot.sizeBytes / 1024)} KB</span>
+          </div>
+          <button className="iconButton" type="button" onClick={() => void onCopy(latestScreenshot)} title={t("copyImage")}>
+            {copiedScreenshotId === latestScreenshot.id ? <Check size={15} /> : <Copy size={15} />}
+          </button>
+          <a className="iconButton" href={latestScreenshot.downloadUrl} download title={t("download")}>
+            <Download size={15} />
+          </a>
+          <button className="iconButton dangerIcon" type="button" onClick={() => onDelete(latestScreenshot)} title={t("deleteScreenshot")}>
+            <Trash2 size={15} />
+          </button>
+        </article>
+      ) : null}
+
+      {!latestScreenshot && shownScreenshots.length === 0 ? (
+        <div className="screenshotEmpty">{loading ? t("starting") : t("noScreenshots")}</div>
+      ) : shownScreenshots.length > 0 ? (
+        <div className="screenshotList trayScreenshotList">
+          {shownScreenshots.map((screenshot) => (
+            <article className={`screenshotItem ${onInsertDoc ? "hasDocAction" : ""}`} key={screenshot.id}>
+              <img src={screenshot.url} alt="" loading="lazy" />
+              <div>
+                <strong>{new Date(screenshot.createdAt).toLocaleString()}</strong>
+                <span>{Math.round(screenshot.sizeBytes / 1024)} KB</span>
+              </div>
+              <button className="iconButton" type="button" onClick={() => void onCopy(screenshot)} title={t("copyImage")}>
+                {copiedScreenshotId === screenshot.id ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+              {onInsertDoc ? (
+                <button className="iconButton" type="button" onClick={() => void insert(screenshot)} title={t("insertDoc")}>
+                  {insertedScreenshotId === screenshot.id ? <Check size={15} /> : <FileText size={15} />}
+                </button>
+              ) : null}
+              <a className="iconButton" href={screenshot.downloadUrl} download title={t("download")}>
+                <Download size={15} />
+              </a>
+              <button className="iconButton dangerIcon" type="button" onClick={() => onDelete(screenshot)} title={t("deleteScreenshot")}>
+                <Trash2 size={15} />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ScreenshotFlash({
   screenshot,
   copied,
   t,
   onCopy,
-  onInsert
+  onDismiss
 }: {
   screenshot: SavedScreenshot;
   copied: boolean;
   t: (key: MessageKey) => string;
   onCopy: () => void;
-  onInsert?: () => Promise<boolean>;
+  onDismiss: () => void;
 }) {
-  const [inserted, setInserted] = useState(false);
-
-  const insert = async () => {
-    if (!onInsert) return;
-    const ok = await onInsert();
-    if (!ok) return;
-    setInserted(true);
-    window.setTimeout(() => setInserted(false), 1600);
-  };
-
   return (
-    <div className="screenshotResult">
-      <span>
-        <Camera size={15} />
-        {t("screenshotSaved")}
-      </span>
-      <button className="secondary" type="button" onClick={onCopy}>
+    <div className="screenshotFlash" role="status">
+      <img src={screenshot.url} alt="" />
+      <div className="screenshotFlashBody">
+        <strong>{t("screenshotSaved")}</strong>
+        <span>{new Date(screenshot.createdAt).toLocaleTimeString()}</span>
+      </div>
+      <button className="iconButton" type="button" onClick={onCopy} title={t("copyImage")}>
         {copied ? <Check size={15} /> : <Copy size={15} />}
-        {copied ? t("copied") : t("copyImage")}
       </button>
-      {onInsert ? (
-        <button className="secondary" type="button" onClick={() => void insert()}>
-          {inserted ? <Check size={15} /> : <FileText size={15} />}
-          {inserted ? t("docInserted") : t("insertDoc")}
-        </button>
-      ) : null}
-      <a className="secondary" href={screenshot.downloadUrl} download>
+      <a className="iconButton" href={screenshot.downloadUrl} download title={t("download")}>
         <Download size={15} />
-        {t("download")}
       </a>
+      <button className="iconButton" type="button" onClick={onDismiss} title="Close">
+        <X size={15} />
+      </button>
     </div>
   );
 }
@@ -1356,30 +1617,144 @@ function DeviceGrid({
   );
 }
 
+function FocusMetaBar({
+  device,
+  t,
+  viewers,
+  self,
+  cursorsEnabled,
+  onToggleCursors,
+  onNameChange
+}: {
+  device: AndroidDevice | null;
+  t: (key: MessageKey) => string;
+  viewers: ViewerPresence[];
+  self: ClientIdentity;
+  cursorsEnabled: boolean;
+  onToggleCursors: () => void;
+  onNameChange: (name: string) => void;
+}) {
+  const visibleViewers = viewers.slice(0, 5);
+  const overflow = Math.max(0, viewers.length - visibleViewers.length);
+
+  return (
+    <div className="focusMetaBar">
+      <div className="deviceStatusBar">
+        <InfoPill tone="link" icon={<Cable size={15} />} label={device?.transport.toUpperCase() ?? "USB"} />
+        <InfoPill
+          tone="screen"
+          icon={<Smartphone size={15} />}
+          label={device?.size ? `${device.size.width}x${device.size.height}` : t("unknownSize")}
+        />
+      </div>
+      <div className="collabBar">
+        <span className="viewerLabel">
+          <UsersRound size={14} />
+          {viewers.length || 1} {t("viewers")}
+        </span>
+        <div className="viewerStack" aria-label={t("viewers")}>
+          {visibleViewers.map((viewer) => (
+            <span className="viewerChip" key={viewer.clientId} title={viewer.name} style={{ "--viewer-color": viewer.color } as React.CSSProperties}>
+              <span>{viewer.name.slice(0, 1).toUpperCase()}</span>
+              <small>{viewer.name}</small>
+            </span>
+          ))}
+          {overflow > 0 ? <span className="viewerMore">+{overflow}</span> : null}
+        </div>
+        <button className={`cursorToggle ${cursorsEnabled ? "active" : ""}`} type="button" onClick={onToggleCursors}>
+          {cursorsEnabled ? <Eye size={15} /> : <EyeOff size={15} />}
+          {cursorsEnabled ? t("cursorsOn") : t("cursorsOff")}
+        </button>
+        <label className="cursorNameControl">
+          <UserRound size={14} />
+          <input value={self.name} aria-label={t("cursorName")} title={t("cursorName")} maxLength={24} onChange={(event) => onNameChange(event.target.value)} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function AnnotationToolbar({
+  t,
+  annotationMode,
+  onAnnotationModeChange,
+  annotationColor,
+  onAnnotationColorChange,
+  onClearAnnotations
+}: {
+  t: (key: MessageKey) => string;
+  annotationMode: AnnotationMode;
+  onAnnotationModeChange: (mode: AnnotationMode) => void;
+  annotationColor: AnnotationColor;
+  onAnnotationColorChange: (color: AnnotationColor) => void;
+  onClearAnnotations: () => void;
+}) {
+  return (
+    <div className={`annotationTools topAnnotationTools mode-${annotationMode}`} aria-label="Annotation tools">
+      <button className={`annotationModeButton ${annotationMode === "control" ? "active" : ""}`} type="button" onClick={() => onAnnotationModeChange("control")} title={t("annotationControl")}>
+        <MousePointer2 size={14} />
+        {t("annotationControl")}
+      </button>
+      <button className={`annotationModeButton ${annotationMode === "rect" ? "active" : ""}`} type="button" onClick={() => onAnnotationModeChange("rect")} title={t("annotationRect")}>
+        <SquareDashedMousePointer size={14} />
+        {t("annotationRect")}
+      </button>
+      <button className={`annotationModeButton ${annotationMode === "draw" ? "active" : ""}`} type="button" onClick={() => onAnnotationModeChange("draw")} title={t("annotationDraw")}>
+        <Circle size={13} />
+        {t("annotationDraw")}
+      </button>
+      <span className={`annotationColorPicker ${annotationMode !== "control" ? "visible" : ""}`} aria-label={t("annotationColor")} aria-hidden={annotationMode === "control"}>
+        {ANNOTATION_COLORS.map((color) => (
+          <button
+            className={`annotationColorSwatch ${annotationColor === color ? "active" : ""}`}
+            type="button"
+            key={color}
+            disabled={annotationMode === "control"}
+            tabIndex={annotationMode === "control" ? -1 : 0}
+            onClick={() => onAnnotationColorChange(color)}
+            title={t("annotationColor")}
+            style={{ "--swatch-color": color } as React.CSSProperties}
+          >
+            <span />
+          </button>
+        ))}
+      </span>
+      <button type="button" onClick={onClearAnnotations} title={t("clearCanvas")}>
+        <Delete size={14} />
+        {t("clearCanvas")}
+      </button>
+    </div>
+  );
+}
+
 function DevicePreviewImage({ device, thumbnailTick }: { device: AndroidDevice; thumbnailTick: number }) {
-  const [loaded, setLoaded] = useState(false);
+  const [displaySrc, setDisplaySrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const src = `/api/devices/${encodeURIComponent(device.serial)}/screenshot?t=${thumbnailTick}`;
 
   useEffect(() => {
-    setLoaded(false);
     setFailed(false);
   }, [src]);
 
+  useEffect(() => {
+    setDisplaySrc(null);
+    setFailed(false);
+  }, [device.serial]);
+
   return (
     <>
-      {!loaded ? <span className="previewLoading" /> : null}
-      {!failed ? (
+      {!displaySrc && !failed ? <span className="previewLoading" /> : null}
+      {displaySrc ? <img className="previewImage loaded" src={displaySrc} alt="" loading="lazy" draggable={false} /> : null}
+      {!failed && src !== displaySrc ? (
         <img
-          className={`previewImage ${loaded ? "loaded" : ""}`}
+          className="previewImage preloader"
           src={src}
           alt=""
-          loading="lazy"
+          loading="eager"
           draggable={false}
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setDisplaySrc(src)}
           onError={() => {
             setFailed(true);
-            setLoaded(false);
           }}
         />
       ) : null}
@@ -1457,6 +1832,291 @@ function ControlPanel({
   );
 }
 
+function AppToolsPanel({
+  device,
+  loading,
+  t,
+  onError
+}: {
+  device: AndroidDevice | null;
+  loading: boolean;
+  t: (key: MessageKey) => string;
+  onError: (message: string) => void;
+}) {
+  const [packages, setPackages] = useState<SavedPackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [deeplink, setDeeplink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const disabled = !device || device.state !== "device" || loading || busy;
+
+  useEffect(() => {
+    void fetchPackages().then((items) => {
+      setPackages(items);
+      setSelectedPackageId((current) => current || items[0]?.id || "");
+    }).catch(() => undefined);
+  }, []);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const pkg = await uploadPackage(file);
+      setPackages((current) => [pkg, ...current.filter((item) => item.id !== pkg.id)]);
+      setSelectedPackageId(pkg.id);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "APK upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const install = async () => {
+    if (!device || !selectedPackageId) return;
+    setBusy(true);
+    try {
+      await installPackage(device.serial, selectedPackageId);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "APK install failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openLink = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!device || !deeplink.trim()) return;
+    setBusy(true);
+    try {
+      await openDeeplink(device.serial, deeplink.trim());
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Deeplink failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="toolPanel appToolsPanel" aria-label={t("apps")}>
+      <div className="toolPanelHeader">
+        <span>
+          <Package size={14} />
+          {t("apps")}
+        </span>
+      </div>
+      <label className="apkUpload">
+        <Upload size={15} />
+        {t("uploadApk")}
+        <input type="file" accept=".apk,application/vnd.android.package-archive" onChange={(event) => void upload(event.currentTarget.files?.[0])} />
+      </label>
+      <div className="packageInstallRow">
+        <select value={selectedPackageId} onChange={(event) => setSelectedPackageId(event.target.value)} aria-label={t("recentPackages")}>
+          {packages.length === 0 ? <option value="">{t("recentPackages")}</option> : null}
+          {packages.map((pkg) => (
+            <option value={pkg.id} key={pkg.id}>
+              {pkg.originalName}
+            </option>
+          ))}
+        </select>
+        <button className="secondary" type="button" disabled={disabled || !selectedPackageId} onClick={() => void install()}>
+          {t("installApk")}
+        </button>
+      </div>
+      <form className="deeplinkForm" onSubmit={(event) => void openLink(event)}>
+        <span>
+          <Link size={14} />
+          {t("deeplink")}
+        </span>
+        <input value={deeplink} onChange={(event) => setDeeplink(event.target.value)} placeholder={t("deeplinkPlaceholder")} />
+        <button className="primary" type="submit" disabled={disabled || !deeplink.trim()}>
+          {t("openDeeplink")}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function LogsPanel({
+  device,
+  loading,
+  t,
+  onError,
+  onClose
+}: {
+  device: AndroidDevice | null;
+  loading: boolean;
+  t: (key: MessageKey) => string;
+  onError: (message: string) => void;
+  onClose?: () => void;
+}) {
+  const [preset, setPreset] = useState<DeviceLogs["preset"]>("current_app");
+  const [minLevel, setMinLevel] = useState<LogLevel>("V");
+  const [query, setQuery] = useState("");
+  const [logs, setLogs] = useState<DeviceLogs | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState(true);
+  const logOutputRef = useRef<HTMLDivElement | null>(null);
+  const disabled = !device || device.state !== "device" || loading || busy;
+  const appPidText = logs?.pids?.length ? ` #${logs.pids.join(",")}` : logs?.pid ? ` #${logs.pid}` : "";
+  const currentTarget = logs?.packageName ? `${logs.packageName}${appPidText}` : t("logPresetAll");
+
+  const refreshLogs = useCallback(async (silent = false) => {
+    if (!device) return;
+    if (!silent) setBusy(true);
+    try {
+      setLogs(await fetchDeviceLogs(device.serial, { preset, query, lines: 420, minLevel }));
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to read logs");
+    } finally {
+      if (!silent) setBusy(false);
+    }
+  }, [device?.serial, preset, query, minLevel, onError]);
+
+  useEffect(() => {
+    if (!device || device.state !== "device") {
+      setLogs(null);
+      return;
+    }
+    setLogs(null);
+    void refreshLogs();
+  }, [device?.serial, preset, query, minLevel]);
+
+  useEffect(() => {
+    if (!live || !device || device.state !== "device") return;
+    const timer = window.setInterval(() => {
+      void refreshLogs(true);
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [live, device?.serial, preset, query, minLevel, refreshLogs]);
+
+  useEffect(() => {
+    const output = logOutputRef.current;
+    if (!output || !live) return;
+    output.scrollTop = output.scrollHeight;
+  }, [logs?.capturedAt, live]);
+
+  const copyLogs = async () => {
+    const text = logs?.lines.join("\n") ?? "";
+    if (!text) return;
+    await navigator.clipboard?.writeText(text).catch(() => undefined);
+  };
+
+  return (
+    <section className="toolPanel logsPanel" aria-label={t("logs")}>
+      <div className="toolPanelHeader">
+        <span>
+          <Logs size={14} />
+          {t("logs")}
+        </span>
+        <div className="logHeaderActions">
+          <button className={`secondary miniToggle ${live ? "activeAction" : ""}`} type="button" disabled={!device || device.state !== "device"} onClick={() => setLive((current) => !current)}>
+            {live ? t("pauseLogs") : t("liveLogs")}
+          </button>
+          <button className="iconButton" type="button" disabled={disabled} onClick={() => void refreshLogs()} title={t("refreshLogs")}>
+            <RefreshCw size={14} />
+          </button>
+          {onClose ? (
+            <button className="iconButton" type="button" onClick={onClose} title="Close">
+              <X size={15} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="logFilterCard">
+        <div className="logFilterGroup">
+          <span className="logFilterLabel">{t("logs")}</span>
+          <div className={`logPresetRow preset-${preset}`}>
+            {([
+              ["current_app", t("logPresetCurrent"), <Terminal size={13} />],
+              ["crash", t("logPresetCrash"), <Bug size={13} />],
+              ["network", t("logPresetNetwork"), <Radio size={13} />],
+              ["all", t("logPresetAll"), <Logs size={13} />]
+            ] as const).map(([value, label, icon]) => (
+              <button className={preset === value ? "active" : ""} type="button" key={value} onClick={() => {
+                setPreset(value);
+                setMinLevel(value === "crash" ? "E" : "V");
+                setLogs(null);
+              }}>
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="logFilterGroup">
+          <span className="logFilterLabel">{t("logLevel")}</span>
+          <div className={`logLevelRow level-${minLevel}`} aria-label={t("logLevel")}>
+            {(["V", "D", "I", "W", "E", "F"] as const).map((level) => (
+              <button
+                className={minLevel === level ? "active" : ""}
+                type="button"
+                key={level}
+                title={`${logLevelLabel(level, t)} (${level}+)`}
+                onClick={() => {
+                  setMinLevel(level);
+                  setLogs(null);
+                }}
+              >
+                {logLevelLabel(level, t)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="logSearchRow single">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("logSearch")} />
+      </div>
+      {logs ? (
+        <div className="logMeta">
+          {live ? t("liveLogs") : t("pauseLogs")} · {t("logMeta")} {logs.lines.length} · {t("logLevel")} {logLevelLabel(logs.minLevel ?? minLevel, t)} · {currentTarget}
+        </div>
+      ) : null}
+      <div className="logOutput" ref={logOutputRef}>
+        {busy ? (
+          <span>{t("refreshLogs")}...</span>
+        ) : logs?.lines.length ? (
+          <pre className="logText">
+            {logs.lines.map((line, index) => {
+              const level = readClientLogLevel(line) ?? "V";
+              return (
+                <span className={`logLine level-${level}`} key={`${logs.capturedAt}-${index}`}>
+                  {line}
+                </span>
+              );
+            })}
+          </pre>
+        ) : (
+          <span>{preset === "current_app" ? t("logCurrentAppEmpty") : t("noLogs")}</span>
+        )}
+      </div>
+      <button className="secondary logCopyButton" type="button" disabled={!logs?.lines.length} onClick={() => void copyLogs()}>
+        <Copy size={14} />
+        {t("copyLogs")}
+      </button>
+      <button className="secondary logCopyButton" type="button" disabled={!logs?.lines.length} onClick={() => setLogs(null)}>
+        <Delete size={14} />
+        {t("clearLogs")}
+      </button>
+    </section>
+  );
+}
+
+function readClientLogLevel(line: string): LogLevel | undefined {
+  const match = line.match(/\s([VDIWEF])\/[^:]+:/);
+  return match?.[1] as LogLevel | undefined;
+}
+
+function logLevelLabel(level: LogLevel, t: (key: MessageKey) => string) {
+  const labels: Record<LogLevel, MessageKey> = {
+    V: "logLevelVerbose",
+    D: "logLevelDebug",
+    I: "logLevelInfo",
+    W: "logLevelWarn",
+    E: "logLevelError",
+    F: "logLevelFatal"
+  };
+  return t(labels[level]);
+}
+
 function ControlButton({ icon, label, disabled, onClick }: { icon: React.ReactNode; label: string; disabled: boolean; onClick: () => void }) {
   return (
     <button className="controlButton" type="button" disabled={disabled} onClick={onClick} title={label}>
@@ -1509,7 +2169,28 @@ type ClientIdentity = {
   color: string;
 };
 
+type ViewerPresence = {
+  clientId: string;
+  name: string;
+  color: string;
+  seenAt: number;
+};
+
 type PresenceMessage =
+  | {
+      type: "roster";
+      viewers: ViewerPresence[];
+    }
+  | {
+      type: "hello";
+      clientId: string;
+      name: string;
+      color: string;
+    }
+  | {
+      type: "clear";
+      clientId: string;
+    }
   | {
       type: "cursor";
       clientId: string;
@@ -1531,10 +2212,7 @@ type PresenceMessage =
       annotation: SharedAnnotation;
       seenAt: number;
     }
-  | {
-      type: "clear";
-      clientId: string;
-    };
+;
 
 function MirrorPlayer({
   device,
@@ -1543,7 +2221,13 @@ function MirrorPlayer({
   cursorsEnabled,
   clientIdentity,
   annotationMode,
-  clearSignal
+  annotationColor,
+  onAnnotationModeChange,
+  onAnnotationColorChange,
+  onClearAnnotations,
+  clearSignal,
+  onAnnotationsChange,
+  onViewersChange
 }: {
   device: AndroidDevice | null;
   session: MirrorSession | null;
@@ -1551,7 +2235,13 @@ function MirrorPlayer({
   cursorsEnabled: boolean;
   clientIdentity: ClientIdentity;
   annotationMode: AnnotationMode;
+  annotationColor: AnnotationColor;
+  onAnnotationModeChange: (mode: AnnotationMode) => void;
+  onAnnotationColorChange: (color: AnnotationColor) => void;
+  onClearAnnotations: () => void;
   clearSignal: number;
+  onAnnotationsChange: (annotations: SharedAnnotation[]) => void;
+  onViewersChange: (viewers: ViewerPresence[]) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const screenFrameRef = useRef<HTMLDivElement | null>(null);
@@ -1560,6 +2250,7 @@ function MirrorPlayer({
   const wheelLockRef = useRef(false);
   const presenceRef = useRef<WebSocket | null>(null);
   const clientIdentityRef = useRef(clientIdentity);
+  const annotationColorRef = useRef<AnnotationColor>(annotationColor);
   const lastCursorSentRef = useRef(0);
   const annotationRef = useRef<{ id: string; start: AnnotationPoint; points: AnnotationPoint[]; mode: Exclude<AnnotationMode, "control"> } | null>(null);
   const lastClearSignalRef = useRef(clearSignal);
@@ -1572,6 +2263,10 @@ function MirrorPlayer({
   useEffect(() => {
     clientIdentityRef.current = clientIdentity;
   }, [clientIdentity]);
+
+  useEffect(() => {
+    annotationColorRef.current = annotationColor;
+  }, [annotationColor]);
 
   useEffect(() => {
     if (!session || !videoRef.current) {
@@ -1624,9 +2319,20 @@ function MirrorPlayer({
     const socket = new WebSocket(`${protocol}//${window.location.host}/ws/presence/${encodeURIComponent(device.serial)}`);
     presenceRef.current = socket;
 
+    socket.onopen = () => {
+      sendPresenceHello();
+    };
+
     socket.onmessage = (event) => {
       const message = parsePresenceMessage(event.data);
-      if (!message || message.clientId === clientIdentityRef.current.id) return;
+      if (!message) return;
+
+      if (message.type === "roster") {
+        onViewersChange(message.viewers.length ? message.viewers : [identityToViewer(clientIdentityRef.current)]);
+        return;
+      }
+
+      if (message.clientId === clientIdentityRef.current.id) return;
 
       if (message.type === "clear") {
         setAnnotations({});
@@ -1648,7 +2354,9 @@ function MirrorPlayer({
           delete next[message.clientId];
           return next;
         }
-        next[message.clientId] = message;
+        if (message.type === "cursor") {
+          next[message.clientId] = message;
+        }
         return next;
       });
     };
@@ -1659,17 +2367,27 @@ function MirrorPlayer({
 
     return () => {
       sendPresenceLeave();
+      onViewersChange([]);
       socket.close();
     };
   }, [device?.serial]);
+
+  useEffect(() => {
+    sendPresenceHello();
+  }, [clientIdentity.name, clientIdentity.color]);
 
   useEffect(() => {
     if (lastClearSignalRef.current === clearSignal) return;
     lastClearSignalRef.current = clearSignal;
     setAnnotations({});
     setDraftAnnotation(null);
+    onAnnotationsChange([]);
     sendPresenceClear();
   }, [clearSignal]);
+
+  useEffect(() => {
+    onAnnotationsChange(Object.values(annotations));
+  }, [annotations, onAnnotationsChange]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1734,7 +2452,7 @@ function MirrorPlayer({
       const point = { x: ratios.xRatio, y: ratios.yRatio };
       const id = createClientId();
       annotationRef.current = { id, start: point, points: [point], mode: annotationMode };
-      setDraftAnnotation(createDraftAnnotation(id, annotationMode, point, point, [point], clientIdentityRef.current));
+      setDraftAnnotation(createDraftAnnotation(id, annotationMode, point, point, [point], clientIdentityRef.current, annotationColorRef.current));
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1761,7 +2479,7 @@ function MirrorPlayer({
           annotation.points.push(point);
         }
       }
-      setDraftAnnotation(createDraftAnnotation(annotation.id, annotation.mode, annotation.start, point, annotation.points, clientIdentityRef.current));
+      setDraftAnnotation(createDraftAnnotation(annotation.id, annotation.mode, annotation.start, point, annotation.points, clientIdentityRef.current, annotationColorRef.current));
       return;
     }
     const pointer = pointerRef.current;
@@ -1785,7 +2503,8 @@ function MirrorPlayer({
         annotationRef.current.start,
         point,
         annotationRef.current.points,
-        clientIdentityRef.current
+        clientIdentityRef.current,
+        annotationColorRef.current
       );
       annotationRef.current = null;
       setDraftAnnotation(null);
@@ -1838,6 +2557,16 @@ function MirrorPlayer({
 
   return (
     <section className="stage">
+      <div className="stageToolbar">
+        <AnnotationToolbar
+          t={t}
+          annotationMode={annotationMode}
+          onAnnotationModeChange={onAnnotationModeChange}
+          annotationColor={annotationColor}
+          onAnnotationColorChange={onAnnotationColorChange}
+          onClearAnnotations={onClearAnnotations}
+        />
+      </div>
       <div className="screenFrame" ref={screenFrameRef} style={screenFrameStyle(device)}>
         <video
           ref={videoRef}
@@ -1915,6 +2644,19 @@ function MirrorPlayer({
       JSON.stringify({
         type: "leave",
         clientId: clientIdentityRef.current.id
+      })
+    );
+  }
+
+  function sendPresenceHello() {
+    if (!presenceRef.current || presenceRef.current.readyState !== WebSocket.OPEN) return;
+    const identity = clientIdentityRef.current;
+    presenceRef.current.send(
+      JSON.stringify({
+        type: "hello",
+        clientId: identity.id,
+        name: identity.name,
+        color: identity.color
       })
     );
   }
@@ -2021,6 +2763,74 @@ async function copyScreenshotImage(screenshot: SavedScreenshot) {
   ]);
 }
 
+async function annotateAndSaveScreenshot(serial: string, screenshot: SavedScreenshot, annotations: SharedAnnotation[]) {
+  const image = await loadImage(screenshot.rawUrl ?? screenshot.url);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext("2d");
+  if (!context) return screenshot;
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  drawAnnotations(context, canvas.width, canvas.height, annotations);
+  const dataUrl = canvas.toDataURL("image/png");
+  return saveAnnotatedScreenshot(serial, screenshot.id, dataUrl, annotations);
+}
+
+function drawAnnotations(context: CanvasRenderingContext2D, width: number, height: number, annotations: SharedAnnotation[]) {
+  for (const annotation of annotations) {
+    context.save();
+    context.strokeStyle = annotation.color;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.shadowColor = "rgba(0, 0, 0, 0.28)";
+    context.shadowBlur = 2;
+    context.shadowOffsetY = 1;
+
+    if (annotation.kind === "rect") {
+      const x = annotation.rect.x * width;
+      const y = annotation.rect.y * height;
+      const rectWidth = annotation.rect.width * width;
+      const rectHeight = annotation.rect.height * height;
+      context.fillStyle = hexToRgba(annotation.color, 0.1);
+      context.lineWidth = Math.max(2, Math.min(width, height) * 0.0032);
+      context.fillRect(x, y, rectWidth, rectHeight);
+      context.strokeRect(x, y, rectWidth, rectHeight);
+    } else if (annotation.points.length > 1) {
+      context.lineWidth = Math.max(2, Math.min(width, height) * 0.004);
+      context.beginPath();
+      annotation.points.forEach((point, index) => {
+        const x = point.x * width;
+        const y = point.y * height;
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+    }
+
+    context.restore();
+  }
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to load screenshot image"));
+    image.src = src;
+  });
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const match = hex.match(/^#([0-9a-f]{6})$/i);
+  if (!match) return `rgba(214, 255, 89, ${alpha})`;
+  const value = Number.parseInt(match[1], 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function downloadSavedScreenshot(screenshot: SavedScreenshot) {
   const link = document.createElement("a");
   link.href = screenshot.downloadUrl;
@@ -2036,7 +2846,8 @@ function createDraftAnnotation(
   start: AnnotationPoint,
   end: AnnotationPoint,
   points: AnnotationPoint[],
-  identity: ClientIdentity
+  identity: ClientIdentity,
+  color: AnnotationColor
 ): SharedAnnotation {
   if (mode === "rect") {
     const x = Math.min(start.x, end.x);
@@ -2044,7 +2855,7 @@ function createDraftAnnotation(
     return {
       id,
       kind: "rect",
-      color: identity.color,
+      color,
       name: identity.name,
       rect: {
         x,
@@ -2058,7 +2869,7 @@ function createDraftAnnotation(
   return {
     id,
     kind: "draw",
-    color: identity.color,
+    color,
     name: identity.name,
     points: points.length > 1 ? points : [start, end]
   };
@@ -2068,6 +2879,20 @@ function parsePresenceMessage(data: unknown): PresenceMessage | null {
   if (typeof data !== "string") return null;
   try {
     const message = JSON.parse(data) as PresenceMessage;
+    if (message.type === "roster" && Array.isArray(message.viewers)) {
+      return {
+        type: "roster",
+        viewers: message.viewers.filter(isViewerPresence)
+      };
+    }
+    if (
+      message.type === "hello" &&
+      typeof message.clientId === "string" &&
+      typeof message.name === "string" &&
+      typeof message.color === "string"
+    ) {
+      return message;
+    }
     if (message.type === "leave" && typeof message.clientId === "string") return message;
     if (message.type === "clear" && typeof message.clientId === "string") return message;
     if (
@@ -2094,6 +2919,26 @@ function parsePresenceMessage(data: unknown): PresenceMessage | null {
     return null;
   }
   return null;
+}
+
+function isViewerPresence(value: unknown): value is ViewerPresence {
+  if (!value || typeof value !== "object") return false;
+  const viewer = value as Partial<ViewerPresence>;
+  return (
+    typeof viewer.clientId === "string" &&
+    typeof viewer.name === "string" &&
+    typeof viewer.color === "string" &&
+    Number.isFinite(viewer.seenAt)
+  );
+}
+
+function identityToViewer(identity: ClientIdentity): ViewerPresence {
+  return {
+    clientId: identity.id,
+    name: identity.name,
+    color: identity.color,
+    seenAt: Date.now()
+  };
 }
 
 function isSharedAnnotation(value: unknown): value is SharedAnnotation {
@@ -2144,6 +2989,19 @@ function readClientIdentity(): ClientIdentity {
   };
   saveClientIdentity(identity);
   return identity;
+}
+
+function readAnnotationColor(): AnnotationColor {
+  const saved = window.localStorage.getItem("pura.annotationColor");
+  return isAnnotationColor(saved) ? saved : "#ff5b57";
+}
+
+function saveAnnotationColor(color: AnnotationColor) {
+  window.localStorage.setItem("pura.annotationColor", color);
+}
+
+function isAnnotationColor(value: unknown): value is AnnotationColor {
+  return typeof value === "string" && ANNOTATION_COLORS.includes(value as AnnotationColor);
 }
 
 function saveClientIdentity(identity: ClientIdentity) {

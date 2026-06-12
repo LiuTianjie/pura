@@ -157,6 +157,83 @@ export async function controlDevice(serial: string, action: ControlAction, value
   throw new Error(`Unsupported control action: ${action}`);
 }
 
+export type LogPreset = "current_app" | "crash" | "network" | "all";
+export type LogLevel = "V" | "D" | "I" | "W" | "E" | "F";
+
+export async function readDeviceLogs(
+  serial: string,
+  input: { preset?: LogPreset; query?: string; lines?: number; minLevel?: LogLevel } = {}
+) {
+  const lines = clamp(Math.round(input.lines ?? 350), 50, 1200);
+  const preset = isLogPreset(input.preset) ? input.preset : "current_app";
+  const currentPackage = preset === "current_app" ? await getFocusedPackage(serial).catch(() => undefined) : undefined;
+  const pids = currentPackage ? await getPackagePids(serial, currentPackage).catch(() => []) : [];
+
+  const minLevel = isLogLevel(input.minLevel) ? input.minLevel : preset === "crash" ? "E" : "V";
+  const query = input.query?.trim().toLowerCase();
+  const readLogcat = async () => {
+    const args = ["-s", serial, "logcat", "-d", "-v", "time", "-t", String(lines * 3)];
+    const { stdout } = await execFileAsync(ADB, args, {
+      timeout: 6500,
+      maxBuffer: 8 * 1024 * 1024
+    });
+    return stdout;
+  };
+  const filterLogs = (stdout: string) => stdout
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .filter((line) => preset !== "current_app" || pids.length === 0 || pids.includes(readLogPid(line) ?? ""))
+    .filter((line) => matchesLogPreset(line, preset))
+    .filter((line) => logLevelRank(readLogLevel(line)) >= logLevelRank(minLevel))
+    .filter((line) => !query || line.toLowerCase().includes(query))
+    .slice(-lines);
+  const missingCurrentApp = preset === "current_app" && (!currentPackage || pids.length === 0);
+  const filtered = missingCurrentApp ? [] : filterLogs(await readLogcat());
+
+  return {
+    preset,
+    minLevel,
+    packageName: currentPackage,
+    pid: pids[0],
+    pids,
+    lines: filtered,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+export async function installApk(serial: string, apkPath: string) {
+  const { stdout, stderr } = await execFileAsync(ADB, ["-s", serial, "install", "-r", apkPath], {
+    timeout: 120_000,
+    maxBuffer: 2 * 1024 * 1024
+  });
+
+  return {
+    ok: /Success/i.test(stdout) || /Success/i.test(stderr),
+    output: [stdout, stderr].filter(Boolean).join("\n").trim()
+  };
+}
+
+export async function openDeeplink(serial: string, url: string) {
+  if (!/^([a-z][a-z0-9+.-]*):\/\//i.test(url)) {
+    throw new Error("A valid deeplink URL is required");
+  }
+
+  const { stdout, stderr } = await execFileAsync(
+    ADB,
+    ["-s", serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url],
+    {
+      timeout: 8000,
+      maxBuffer: 256 * 1024
+    }
+  );
+
+  return {
+    url,
+    output: [stdout, stderr].filter(Boolean).join("\n").trim()
+  };
+}
+
 function parseDeviceLine(line: string): AndroidDevice | null {
   const [serial, state] = line.split(/\s+/, 2);
   if (!serial || !state) return null;
@@ -195,6 +272,84 @@ async function getProp(serial: string, prop: string) {
   });
 
   return stdout.trim();
+}
+
+async function getFocusedPackage(serial: string) {
+  const outputs = await Promise.allSettled([
+    execFileAsync(ADB, ["-s", serial, "shell", "dumpsys", "window", "windows"], {
+      timeout: 3500,
+      maxBuffer: 512 * 1024
+    }),
+    execFileAsync(ADB, ["-s", serial, "shell", "dumpsys", "activity", "activities"], {
+      timeout: 3500,
+      maxBuffer: 1024 * 1024
+    }),
+    execFileAsync(ADB, ["-s", serial, "shell", "dumpsys", "activity", "top"], {
+      timeout: 3500,
+      maxBuffer: 1024 * 1024
+    })
+  ]);
+  const text = outputs
+    .map((result) => (result.status === "fulfilled" ? result.value.stdout : ""))
+    .join("\n");
+  return parseFocusedPackage(text);
+}
+
+function parseFocusedPackage(text: string) {
+  const patterns = [
+    /mCurrentFocus=.*?\s([a-zA-Z0-9_.]+)\/[^\s}]+/,
+    /mFocusedApp=.*?\s([a-zA-Z0-9_.]+)\/[^\s}]+/,
+    /topResumedActivity=.*?\s([a-zA-Z0-9_.]+)\/[^\s}]+/,
+    /mResumedActivity:.*?\s([a-zA-Z0-9_.]+)\/[^\s}]+/,
+    /ResumedActivity:.*?\s([a-zA-Z0-9_.]+)\/[^\s}]+/,
+    /ACTIVITY\s+([a-zA-Z0-9_.]+)\/[^\s]+/
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1] && match[1] !== "null") return match[1];
+  }
+  return undefined;
+}
+
+async function getPackagePids(serial: string, packageName: string) {
+  const { stdout } = await execFileAsync(ADB, ["-s", serial, "shell", "pidof", packageName], {
+    timeout: 2500,
+    maxBuffer: 64 * 1024
+  });
+  return stdout.trim().split(/\s+/).filter(Boolean);
+}
+
+function matchesLogPreset(line: string, preset: LogPreset) {
+  if (preset === "all" || preset === "current_app") return true;
+  if (preset === "crash") return /(fatal exception|androidruntime|exception|crash| force finishing |F\/)/i.test(line);
+  if (preset === "network") return /(http|https|okhttp|retrofit|websocket|grpc|socket|ssl|dns|network)/i.test(line);
+  return true;
+}
+
+function isLogPreset(value: unknown): value is LogPreset {
+  return value === "current_app" || value === "crash" || value === "network" || value === "all";
+}
+
+function isLogLevel(value: unknown): value is LogLevel {
+  return value === "V" || value === "D" || value === "I" || value === "W" || value === "E" || value === "F";
+}
+
+function readLogLevel(line: string) {
+  const match = line.match(/\s([VDIWEF])\/[^:]+:/);
+  return match?.[1] as LogLevel | undefined;
+}
+
+function readLogPid(line: string) {
+  return line.match(/\(\s*(\d+)\)/)?.[1];
+}
+
+function logLevelRank(level?: "V" | "D" | "I" | "W" | "E" | "F") {
+  if (level === "D") return 1;
+  if (level === "I") return 2;
+  if (level === "W") return 3;
+  if (level === "E") return 4;
+  if (level === "F") return 5;
+  return 0;
 }
 
 export async function getDisplaySize(serial: string) {

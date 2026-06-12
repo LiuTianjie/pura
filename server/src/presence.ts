@@ -5,10 +5,11 @@ type PresenceClient = {
   name: string;
   color: string;
   socket: WebSocket;
+  seenAt: number;
 };
 
 type CursorMessage = {
-  type: "cursor" | "leave" | "annotation" | "clear";
+  type: "hello" | "cursor" | "leave" | "annotation" | "clear";
   clientId?: string;
   name?: string;
   color?: string;
@@ -24,7 +25,8 @@ export function attachPresenceClient(roomId: string, socket: WebSocket) {
     id: "",
     name: "Viewer",
     color: "#d6ff59",
-    socket
+    socket,
+    seenAt: Date.now()
   };
   const room = rooms.get(roomId) ?? new Set<PresenceClient>();
   room.add(client);
@@ -37,9 +39,16 @@ export function attachPresenceClient(roomId: string, socket: WebSocket) {
     client.id = message.clientId ?? client.id;
     client.name = (message.name ?? client.name).slice(0, 32);
     client.color = normalizeColor(message.color ?? client.color);
+    client.seenAt = Date.now();
+
+    if (message.type === "hello") {
+      broadcastRoster(room);
+      return;
+    }
 
     if (message.type === "leave") {
       broadcast(room, client, { type: "leave", clientId: client.id });
+      broadcastRoster(room);
       return;
     }
 
@@ -85,6 +94,7 @@ export function attachPresenceClient(roomId: string, socket: WebSocket) {
   socket.on("close", () => {
     room.delete(client);
     broadcast(room, client, { type: "leave", clientId: client.id });
+    broadcastRoster(room);
     if (room.size === 0) rooms.delete(roomId);
   });
 }
@@ -98,10 +108,25 @@ function broadcast(room: Set<PresenceClient>, sender: PresenceClient, payload: u
   }
 }
 
+function broadcastRoster(room: Set<PresenceClient>) {
+  const viewers = [...room]
+    .filter((client) => client.id)
+    .map((client) => ({
+      clientId: client.id,
+      name: client.name,
+      color: client.color,
+      seenAt: client.seenAt
+    }));
+  const text = JSON.stringify({ type: "roster", viewers });
+  for (const client of room) {
+    if (client.socket.readyState === WebSocket.OPEN) client.socket.send(text);
+  }
+}
+
 function parseCursorMessage(data: WebSocket.RawData): CursorMessage | null {
   try {
     const message = JSON.parse(data.toString()) as CursorMessage;
-    if (!["cursor", "leave", "annotation", "clear"].includes(message.type)) return null;
+    if (!["hello", "cursor", "leave", "annotation", "clear"].includes(message.type)) return null;
     return message;
   } catch {
     return null;

@@ -11,10 +11,15 @@ export type SavedScreenshot = {
   id: string;
   deviceSerial: string;
   fileName: string;
+  annotatedFileName?: string;
   url: string;
   downloadUrl: string;
+  rawUrl?: string;
+  rawDownloadUrl?: string;
   createdAt: string;
   sizeBytes: number;
+  annotationCount?: number;
+  annotations?: unknown[];
 };
 
 type ScreenshotIndex = {
@@ -53,7 +58,63 @@ export function getScreenshot(screenshotId: string, deviceSerial?: string): Save
 }
 
 export function getScreenshotPath(screenshot: SavedScreenshot): string {
-  return path.join(screenshotsDir, path.basename(screenshot.fileName));
+  return path.join(screenshotsDir, path.basename(screenshot.annotatedFileName ?? screenshot.fileName));
+}
+
+export async function deleteScreenshot(screenshotId: string, deviceSerial?: string): Promise<boolean> {
+  const index = readIndex();
+  const screenshotIndex = index.screenshots.findIndex(
+    (screenshot) => screenshot.id === screenshotId && (!deviceSerial || screenshot.deviceSerial === deviceSerial)
+  );
+  if (screenshotIndex < 0) return false;
+
+  const [screenshot] = index.screenshots.splice(screenshotIndex, 1);
+  await fs.promises.mkdir(screenshotsDir, { recursive: true });
+  await fs.promises.writeFile(screenshotsIndexPath, `${JSON.stringify(index, null, 2)}\n`);
+
+  const fileNames = [screenshot.fileName, screenshot.annotatedFileName].filter(Boolean) as string[];
+  await Promise.all(
+    [...new Set(fileNames)].map((fileName) =>
+      fs.promises.rm(path.join(screenshotsDir, path.basename(fileName)), { force: true }).catch(() => undefined)
+    )
+  );
+
+  return true;
+}
+
+export async function saveAnnotatedScreenshot(
+  screenshotId: string,
+  deviceSerial: string,
+  image: Buffer,
+  annotations: unknown[]
+): Promise<SavedScreenshot> {
+  await fs.promises.mkdir(screenshotsDir, { recursive: true });
+  const index = readIndex();
+  const screenshotIndex = index.screenshots.findIndex(
+    (screenshot) => screenshot.id === screenshotId && screenshot.deviceSerial === deviceSerial
+  );
+  if (screenshotIndex < 0) throw new Error("Screenshot not found");
+
+  const screenshot = index.screenshots[screenshotIndex];
+  const annotatedFileName = screenshot.annotatedFileName ?? screenshot.fileName.replace(/\.png$/i, "-annotated.png");
+  const annotatedPath = path.join(screenshotsDir, path.basename(annotatedFileName));
+  await fs.promises.writeFile(annotatedPath, image);
+
+  const nextScreenshot: SavedScreenshot = {
+    ...screenshot,
+    annotatedFileName,
+    rawUrl: `/api/screenshots/${encodeURIComponent(screenshot.fileName)}`,
+    rawDownloadUrl: `/api/screenshots/${encodeURIComponent(screenshot.fileName)}?download=1`,
+    url: `/api/screenshots/${encodeURIComponent(annotatedFileName)}`,
+    downloadUrl: `/api/screenshots/${encodeURIComponent(annotatedFileName)}?download=1`,
+    sizeBytes: image.length,
+    annotationCount: annotations.length,
+    annotations
+  };
+
+  index.screenshots[screenshotIndex] = nextScreenshot;
+  await fs.promises.writeFile(screenshotsIndexPath, `${JSON.stringify(index, null, 2)}\n`);
+  return nextScreenshot;
 }
 
 export async function saveScreenshot(image: Buffer, deviceSerial: string): Promise<SavedScreenshot> {

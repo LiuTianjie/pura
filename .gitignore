@@ -5,3 +5,4 @@ server/dist/
 *.log
 data/
 data-agent*/
+data-hub/
