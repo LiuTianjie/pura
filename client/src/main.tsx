@@ -157,6 +157,8 @@ const messages = {
     statusLive: "Live",
     statusError: "Stream error",
     statusIdle: "Idle",
+    controlOffline: "Control offline",
+    errorControlOffline: "This device is from an offline Agent. Refresh or ask the owner to reconnect.",
     errorRefresh: "Unable to refresh devices",
     errorStart: "Unable to start session",
     errorPublish: "Unable to publish device",
@@ -295,6 +297,8 @@ const messages = {
     statusLive: "直播中",
     statusError: "流异常",
     statusIdle: "空闲",
+    controlOffline: "控制离线",
+    errorControlOffline: "这台设备来自已离线的 Agent，刷新或让负责人重新连接后再操作。",
     errorRefresh: "无法刷新设备",
     errorStart: "无法启动会话",
     errorPublish: "无法发布设备",
@@ -405,6 +409,7 @@ function App() {
     () => data.devices.find((device) => device.serial === selectedSerial) ?? null,
     [data.devices, selectedSerial]
   );
+  const selectedDeviceControllable = selectedDevice ? isDeviceControllable(selectedDevice) : false;
   const showEmbeddedDoc = Boolean(embeddedDocUrl && !logsOpen);
   const showAuxPanel = logsOpen || showEmbeddedDoc;
   const publishedDevices = useMemo(
@@ -485,8 +490,8 @@ function App() {
       setError(null);
       if (!selectedSerial && next.devices.length > 0) {
         const firstReady =
-          next.devices.find((device) => device.publication?.published && device.state === "device") ??
-          next.devices.find((device) => device.state === "device") ??
+          next.devices.find((device) => device.publication?.published && isDeviceControllable(device)) ??
+          next.devices.find((device) => isDeviceControllable(device)) ??
           next.devices[0];
         setSelectedSerial(firstReady.serial);
       }
@@ -578,6 +583,12 @@ function App() {
 
   const openDevice = async (serial = selectedSerial, restart = false) => {
     if (!serial) return;
+    const targetDevice = data.devices.find((device) => device.serial === serial);
+    if (targetDevice && !isDeviceControllable(targetDevice)) {
+      setError(t("errorControlOffline"));
+      setSession(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -599,7 +610,10 @@ function App() {
   };
 
   const captureCurrentDevice = async (device = selectedDevice) => {
-    if (!device || device.state !== "device") return undefined;
+    if (!device || !isDeviceControllable(device)) {
+      if (device) setError(t("errorControlOffline"));
+      return undefined;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -696,7 +710,7 @@ function App() {
     selectDevice(device);
     setLatestScreenshot(null);
     setScreenshotCopied(false);
-    if (viewMode === "focus" && device.state === "device") {
+    if (viewMode === "focus" && isDeviceControllable(device)) {
       await openDevice(device.serial);
     }
   };
@@ -704,8 +718,10 @@ function App() {
   const enterDevice = async (device: AndroidDevice) => {
     selectDevice(device);
     setViewMode("focus");
-    if (device.state === "device") {
+    if (isDeviceControllable(device)) {
       await openDevice(device.serial);
+    } else {
+      setError(t("errorControlOffline"));
     }
   };
 
@@ -803,7 +819,7 @@ function App() {
                       <strong>{displayName(device)}</strong>
                       <small>{device.publication?.owner || device.serial}</small>
                     </span>
-                    <StatusDot state={device.state} />
+                    <StatusDot device={device} />
                   </button>
                   <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
                     <Settings size={15} />
@@ -835,7 +851,7 @@ function App() {
                       <strong>{formatDeviceName(device)}</strong>
                       <small>{device.serial}</small>
                     </span>
-                    <StatusDot state={device.state} />
+                    <StatusDot device={device} />
                   </button>
                   <button className="deviceManageButton" type="button" onClick={() => setManagedSerial(device.serial)} title={t("deviceManagement")}>
                     <Settings size={15} />
@@ -862,22 +878,22 @@ function App() {
             </button>
           </div>
           <div className="actions">
-            <button className="secondary" onClick={() => void stopCurrentSession()} disabled={!session}>
+              <button className="secondary" onClick={() => void stopCurrentSession()} disabled={!session}>
               <Power size={16} />
               {t("stop")}
             </button>
-            <button className="secondary" onClick={() => void captureCurrentDevice()} disabled={!selectedDevice || selectedDevice.state !== "device" || loading}>
+            <button className="secondary" onClick={() => void captureCurrentDevice()} disabled={!selectedDeviceControllable || loading}>
               <Camera size={16} />
               {t("screenshot")}
             </button>
-            <button className={`secondary ${logsOpen ? "activeAction" : ""}`} onClick={() => setLogsOpen((current) => !current)} disabled={!selectedDevice || selectedDevice.state !== "device"}>
+            <button className={`secondary ${logsOpen ? "activeAction" : ""}`} onClick={() => setLogsOpen((current) => !current)} disabled={!selectedDeviceControllable}>
               <Logs size={16} />
               {t("logs")}
             </button>
             <button
               className="primary"
               onClick={() => void openDevice(selectedSerial)}
-              disabled={!selectedSerial || loading}
+              disabled={!selectedSerial || !selectedDeviceControllable || loading}
             >
               <MonitorPlay size={17} />
               {loading ? t("starting") : session ? t("restartView") : t("openView")}
@@ -1565,19 +1581,19 @@ function DeviceGrid({
             className={`phoneCard ${device.serial === selectedSerial ? "selected" : ""}`}
             key={device.serial}
           >
-            <button className="phoneOpenArea" type="button" onClick={() => onOpen(device)}>
+            <button className="phoneOpenArea" type="button" disabled={!isDeviceControllable(device)} onClick={() => onOpen(device)}>
               <div className="phonePreview" aria-label={t("preview")}>
               <div className="phoneChrome" style={{ aspectRatio: deviceAspectRatio(device) }}>
                 <span className="speaker" />
                 <div className="previewScreen">
-                  {device.state === "device" ? (
+                  {isDeviceControllable(device) ? (
                     <DevicePreviewImage device={device} thumbnailTick={thumbnailTick} />
                   ) : null}
-                  <span className={`previewSignal ${device.state}`} />
-                  {device.state !== "device" ? (
+                  <span className={`previewSignal ${deviceStatusClass(device)}`} />
+                  {!isDeviceControllable(device) ? (
                     <>
                       <Smartphone size={34} />
-                      <small>{device.size ? `${device.size.width}x${device.size.height}` : t("unknownSize")}</small>
+                      <small>{device.controlOnline === false ? t("controlOffline") : device.size ? `${device.size.width}x${device.size.height}` : t("unknownSize")}</small>
                     </>
                   ) : null}
                 </div>
@@ -1592,11 +1608,11 @@ function DeviceGrid({
             </button>
             <div className="phoneFooter">
               <span>
-                <StatusDot state={device.state} />
-                {device.state}
+                <StatusDot device={device} />
+                {device.controlOnline === false ? t("controlOffline") : device.state}
               </span>
               <div className="phoneActions">
-                <button className="phoneAction" type="button" onClick={() => onOpen(device)}>
+                <button className="phoneAction" type="button" disabled={!isDeviceControllable(device)} onClick={() => onOpen(device)}>
                   {t("openDevice")}
                 </button>
                 {device.publication?.published ? (
@@ -1604,7 +1620,7 @@ function DeviceGrid({
                     {t("unpublish")}
                   </button>
                 ) : (
-                  <button className="phoneAction" type="button" disabled={loading || device.state !== "device"} onClick={() => onPublish(device)}>
+                  <button className="phoneAction" type="button" disabled={loading || !isDeviceControllable(device)} onClick={() => onPublish(device)}>
                     {t("publish")}
                   </button>
                 )}
@@ -3079,8 +3095,9 @@ function InfoPill({ icon, label, tone = "neutral" }: { icon: React.ReactNode; la
   );
 }
 
-function StatusDot({ state }: { state: AndroidDevice["state"] }) {
-  return <span className={`dot ${state}`} title={state} />;
+function StatusDot({ device }: { device: AndroidDevice }) {
+  const status = deviceStatusClass(device);
+  return <span className={`dot ${status}`} title={device.controlOnline === false ? "control offline" : device.state} />;
 }
 
 function formatDeviceName(device: AndroidDevice) {
@@ -3090,6 +3107,15 @@ function formatDeviceName(device: AndroidDevice) {
 
 function displayName(device: AndroidDevice) {
   return device.publication?.label || formatDeviceName(device);
+}
+
+function isDeviceControllable(device: AndroidDevice) {
+  return device.state === "device" && device.controlOnline !== false;
+}
+
+function deviceStatusClass(device: AndroidDevice) {
+  if (device.controlOnline === false) return "controlOffline";
+  return device.state;
 }
 
 function deviceAspectRatio(device: AndroidDevice) {

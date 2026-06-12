@@ -447,6 +447,12 @@ button {
   background: var(--amber);
 }
 
+.dot.controlOffline,
+.previewSignal.controlOffline {
+  background: var(--red);
+  box-shadow: 0 0 14px rgba(255, 107, 98, 0.22);
+}
+
 .emptyState {
   display: grid;
   place-items: center;
@@ -706,13 +712,16 @@ a.iconButton {
 .viewerChip > span {
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  aspect-ratio: 1;
   color: #101408;
   background: var(--viewer-color);
-  border-radius: 50%;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 900;
+  line-height: 1;
 }
 
 .viewerChip small {
@@ -1241,6 +1250,15 @@ a.iconButton {
 
 .previewSignal.unauthorized {
   background: var(--amber);
+}
+
+.phoneOpenArea:disabled {
+  cursor: default;
+}
+
+.phoneOpenArea:disabled .phonePreview,
+.phoneOpenArea:disabled .phoneMeta {
+  opacity: 0.74;
 }
 
 .liveTag {

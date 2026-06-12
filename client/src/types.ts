@@ -14,6 +14,7 @@ export type AndroidDevice = {
   agentId?: string;
   agentName?: string;
   agentUrl?: string;
+  controlOnline?: boolean;
 };
 
 export type DevicePublication = {
