@@ -16,5 +16,5 @@ pura is designed for trusted local networks:
 
 - Hub and Agent APIs are unauthenticated by default.
 - Agents can execute `adb shell input tap` on connected Android devices.
-- Hub must be able to reach each Agent over the LAN.
+- Agents initiate outbound control and video WebSocket connections to the Hub. Normal Hub operation does not require reverse access to Agent ports.
 - Do not expose Hub or Agent ports directly to the public internet.
